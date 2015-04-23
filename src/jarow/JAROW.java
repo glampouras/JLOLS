@@ -192,6 +192,7 @@ public class JAROW implements Serializable {
                 averagedWeightVectors.put(label, new HashMap<String, Double>());
             }
         }
+        System.out.println("CWV: " + currentWeightVectors);
 
         // in each iteration        
         for (int r = 0; r < rounds; r++) {
@@ -261,9 +262,15 @@ public class JAROW implements Serializable {
                     }
                     if (averaging && averagedWeightVectors != null) {
                         for (String feature : zVectorPredicted.keySet()) {
+                            if (averagedWeightVectors.get(prediction.getLabel()).get(feature) == null) {
+                                averagedWeightVectors.get(prediction.getLabel()).put(feature, 0.0);
+                            }
                             averagedWeightVectors.get(prediction.getLabel()).put(feature, averagedWeightVectors.get(prediction.getLabel()).get(feature) - alpha * updatesLeft* zVectorPredicted.get(feature));
                         }
                         for (String feature : zVectorMinCorrect.keySet()) {
+                            if (averagedWeightVectors.get(minCorrectLabel).get(feature) == null) {
+                                averagedWeightVectors.get(minCorrectLabel).put(feature, 0.0);
+                            }
                             averagedWeightVectors.get(minCorrectLabel).put(feature, averagedWeightVectors.get(minCorrectLabel).get(feature) + alpha * updatesLeft* zVectorMinCorrect.get(feature));
                         }
                     }
@@ -453,6 +460,12 @@ public class JAROW implements Serializable {
     public double dotProduct(HashMap<String, Double> a1, HashMap<String, Double> a2) {        
         double product = 0.0;
         for (String label : a1.keySet()) {
+            if (a1.get(label) == null) {
+                a1.put(label, 0.0);
+            }
+            if (a2.get(label) == null) {
+                a2.put(label, 0.0);
+            }
             product += a1.get(label) * a2.get(label);
         }
         return product;

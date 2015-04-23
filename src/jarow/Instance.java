@@ -86,7 +86,6 @@ public class Instance {
                 for (String label : this.costs.keySet()) {
                     this.costs.put(label, this.costs.get(label) - this.minCost);
                 }
-                //TO-DO: Shouldn't minCost also be set to 0?
                 this.maxCost -= this.minCost;
             }
         }
