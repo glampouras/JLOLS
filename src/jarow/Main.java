@@ -6,6 +6,7 @@ package jarow;
 
 // Cost-sensitive multiclass classification with AROW
 
+import gnu.trove.map.hash.TObjectDoubleHashMap;
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -15,7 +16,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -36,8 +36,8 @@ public class Main {
                 String[] details;
                 details = line.split(" ");
                 
-                HashMap<String, Double> featureVector = new HashMap<>();
-                HashMap<String, Double> costs = new HashMap<>();
+                TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
+                TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
                 
                 if (details[0].equals("-1")) {
                     costs.put("neg", 0.0);
@@ -67,7 +67,7 @@ public class Main {
         //instances = instances[:100]
         // ORIGINAL EVALUATION
         // Keep some instances to check the performance        
-        ArrayList<Instance> testingInstances = new ArrayList(instances.subList(((int) Math.round(instances.size() * 0.75)) + 1, instances.size()));
+        /*ArrayList<Instance> testingInstances = new ArrayList(instances.subList(((int) Math.round(instances.size() * 0.75)) + 1, instances.size()));
         ArrayList<Instance> trainingInstances = new ArrayList(instances.subList(0, (int) Math.round(instances.size() * 0.75)));
 
         System.out.println("training data: " + trainingInstances.size() + " instances");
@@ -79,10 +79,10 @@ public class Main {
 
         Double cost = classifier_p.batchPredict(testingInstances);
         Double avgCost = cost/(double)testingInstances.size();
-        System.out.println("Avg Cost per instance " + avgCost + " on " + testingInstances.size() + " testing instances");
+        System.out.println("Avg Cost per instance " + avgCost + " on " + testingInstances.size() + " testing instances");*/
 
         //10-FOLD CROSS VALIDATION
-        /*for (double f = 0.0; f < 1.0; f += 0.1) {            
+        for (double f = 0.0; f < 1.0; f += 0.1) {            
             int from = ((int) Math.round(instances.size() * f)) + 1;
             if (from < instances.size()) {
                 int to = (int) Math.round(instances.size() * (f + 0.1));
@@ -107,7 +107,7 @@ public class Main {
                 Double avgCost = cost/(double)testingInstances.size();
                 System.out.println("Avg Cost per instance " + avgCost + " on " + testingInstances.size() + " testing instances");
             }
-        }*/
+        }
         
         /*#avgRatio = classifier_p.batchPredict(testingInstances, True)
         #print "entropy sums: " + str(avgRatio)

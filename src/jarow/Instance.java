@@ -2,27 +2,30 @@ package jarow;
 
 // cost-sensitive multiclass classification with AROW
 
-import java.util.HashMap;
-import java.util.HashSet;
+import gnu.trove.map.hash.TObjectDoubleHashMap;
+import gnu.trove.map.hash.TObjectIntHashMap;
+import gnu.trove.set.hash.THashSet;
+import java.util.ArrayList;
+
 
 // the instances consist of a HashMap of labels to costs and feature vectors (Huang-style)
 
 public class Instance {
-    public static HashSet<Instance> removeHapaxLegomena(HashSet<Instance> instances) {
+    public static ArrayList<Instance> removeHapaxLegomena(ArrayList<Instance> instances) {
         System.out.println("Counting features");
         
-        HashMap<String, Integer> feature2counts = new HashMap<>();
+        TObjectIntHashMap<String> feature2counts = new TObjectIntHashMap<>();
         
         for (Instance instance : instances) {
             for (String element : instance.getFeatureVector().keySet()) {
-                feature2counts.put(element, feature2counts.get(element) + 1);
+                feature2counts.adjustOrPutValue(element, 1, 1);
             }
         }
 
         System.out.println("Removing hapax legomena");
-        HashSet<Instance> newInstances = new HashSet<>();
+        ArrayList<Instance> newInstances = new ArrayList<>();
         for (Instance instance : instances) {
-            HashMap<String, Double> newFeatureVector = new HashMap<>();
+            TObjectDoubleHashMap<String> newFeatureVector = new TObjectDoubleHashMap<>();
             for (String element : instance.getFeatureVector().keySet()) {
                 // if this feature was encountered more than once
                 if (feature2counts.get(element) > 1) {
@@ -34,20 +37,20 @@ public class Instance {
         return newInstances;
     }
     
-    private HashMap<String, Double> featureVector = null;
-    private HashMap<String, Double> costs = null;
+    private TObjectDoubleHashMap<String> featureVector = null;
+    private TObjectDoubleHashMap<String> costs = null;
     
     private Double minCost = Double.POSITIVE_INFINITY;
     private Double maxCost = Double.NEGATIVE_INFINITY;
     
-    private HashSet<String> worstLabels;
-    private HashSet<String> correctLabels;
+    private THashSet<String> worstLabels;
+    private THashSet<String> correctLabels;
     
-    public Instance(HashMap<String, Double> featureVector) {
+    public Instance(TObjectDoubleHashMap<String> featureVector) {
         this(featureVector, null);
     }
     
-    public Instance(HashMap<String, Double> featureVector, HashMap<String, Double> costs) {
+    public Instance(TObjectDoubleHashMap<String> featureVector, TObjectDoubleHashMap<String> costs) {
         this.featureVector = featureVector;
         
         // we assume that the label with the lowest cost has a cost of zero and the rest increment on that
@@ -55,8 +58,8 @@ public class Instance {
         this.costs = costs;
                 
         if (this.costs != null) {
-            this.worstLabels = new HashSet<>();
-            this.correctLabels = new HashSet<>();
+            this.worstLabels = new THashSet<>();
+            this.correctLabels = new THashSet<>();
             
             for (String label : this.costs.keySet()) {
                 Double cost = this.costs.get(label);
@@ -65,7 +68,7 @@ public class Instance {
                 if (compare < 0) {
                     this.minCost = cost;
                     
-                    this.correctLabels = new HashSet<>();
+                    this.correctLabels = new THashSet<>();
                     this.correctLabels.add(label);
                 } else if (compare == 0) {
                     this.correctLabels.add(label);
@@ -74,7 +77,7 @@ public class Instance {
                 if (compare > 0) {
                     this.maxCost = cost;
                     
-                    this.worstLabels = new HashSet<>();
+                    this.worstLabels = new THashSet<>();
                     this.worstLabels.add(label);
                 } else if (compare == 0) {
                     this.worstLabels.add(label);
@@ -83,8 +86,8 @@ public class Instance {
 
             int compare = Double.compare(this.minCost, 0.0);
             if (compare > 0) {                
-                for (String label : this.costs.keySet()) {
-                    this.costs.put(label, this.costs.get(label) - this.minCost);
+                for (String label : this.costs.keySet()) {                    
+                    this.costs.adjustValue(label, - this.minCost);
                 }
                 this.maxCost -= this.minCost;
             }
@@ -102,7 +105,7 @@ public class Instance {
             } else {
                 isFirst = !isFirst;
             }
-            retString += label + ":" + this.costs.get(label).toString();
+            retString += label + ":" + this.costs.get(label);
         }
 
         retString += "\t";
@@ -114,16 +117,16 @@ public class Instance {
             } else {
                 isFirst = !isFirst;
             }
-            retString += feature + ":" + this.featureVector.get(feature).toString();
+            retString += feature + ":" + this.featureVector.get(feature);
         }
         return retString;
     }
 
-    public HashMap<String, Double> getFeatureVector() {
+    public TObjectDoubleHashMap<String> getFeatureVector() {
         return featureVector;
     }
 
-    public HashMap<String, Double> getCosts() {
+    public TObjectDoubleHashMap<String> getCosts() {
         return costs;
     }
 
@@ -131,7 +134,7 @@ public class Instance {
         return maxCost;
     }
 
-    public HashSet<String> getCorrectLabels() {
+    public THashSet<String> getCorrectLabels() {
         return correctLabels;
     }
 }

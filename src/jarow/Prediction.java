@@ -1,31 +1,31 @@
 package jarow;
 
+import gnu.trove.map.hash.TObjectDoubleHashMap;
 import java.util.ArrayList;
-import java.util.HashMap;
 
 public class Prediction {
     
-    private HashMap<String, Double> label2score;
+    private TObjectDoubleHashMap<String> label2score;
     private Double score;
     private String label;
     private ArrayList<ArrayList<Object>> featureValueWeights;
-    private HashMap<String, Double> label2prob;
+    private TObjectDoubleHashMap<String> label2prob;
     private Double entropy;
     
     public Prediction() {        
-        this.label2score = new HashMap<>();
+        this.label2score = new TObjectDoubleHashMap<>();
         this.score = Double.NEGATIVE_INFINITY;
         this.label = null;
         this.featureValueWeights = new ArrayList<>();
-        this.label2prob = new HashMap<>();
+        this.label2prob = new TObjectDoubleHashMap<>();
         this.entropy = 0.0;
     }
 
-    public HashMap<String, Double> getLabel2score() {
+    public TObjectDoubleHashMap<String> getLabel2score() {
         return label2score;
     }
 
-    public void setLabel2score(HashMap<String, Double> label2score) {
+    public void setLabel2score(TObjectDoubleHashMap<String> label2score) {
         this.label2score = label2score;
     }
 
@@ -53,11 +53,11 @@ public class Prediction {
         this.featureValueWeights = featureValueWeights;
     }
 
-    public HashMap<String, Double> getLabel2prob() {
+    public TObjectDoubleHashMap<String> getLabel2prob() {
         return label2prob;
     }
 
-    public void setLabel2prob(HashMap<String, Double> label2prob) {
+    public void setLabel2prob(TObjectDoubleHashMap<String> label2prob) {
         this.label2prob = label2prob;
     }
 

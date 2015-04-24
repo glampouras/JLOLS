@@ -1,5 +1,7 @@
 package jarow;
 
+import gnu.trove.map.hash.THashMap;
+import gnu.trove.map.hash.TObjectDoubleHashMap;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -8,20 +10,18 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Random;
 
 public class JAROW implements Serializable {
     private boolean probabilities;
-    private HashMap<String, HashMap<String, Double>> currentWeightVectors;
-    private HashMap<String, HashMap<String, Double>> currentVarianceVectors;
-    private ArrayList<HashMap<String, HashMap<String, Double>>> probWeightVectors;
+    private THashMap<String, TObjectDoubleHashMap<String>> currentWeightVectors;
+    private THashMap<String, TObjectDoubleHashMap<String>> currentVarianceVectors;
+    private ArrayList<THashMap<String, TObjectDoubleHashMap<String>>> probWeightVectors;
     
     public JAROW() {        
         this.probabilities = false;
-        this.currentWeightVectors = new HashMap<>();
-        this.currentVarianceVectors = new HashMap<>();
+        this.currentWeightVectors = new THashMap<>();
+        this.currentVarianceVectors = new THashMap<>();
     }
         
     // This predicts always using the current weight vectors
@@ -37,7 +37,7 @@ public class JAROW implements Serializable {
         Prediction prediction = new Prediction();
         
         for (String label : currentWeightVectors.keySet()) {
-            HashMap<String, Double> weightVector = currentWeightVectors.get(label);
+            TObjectDoubleHashMap<String> weightVector = currentWeightVectors.get(label);
             
             double score = dotProduct(instance.getFeatureVector(), weightVector);
             prediction.getLabel2score().put(label, score);
@@ -64,18 +64,18 @@ public class JAROW implements Serializable {
         if (probabilities) {
             // if we have probabilistic training
             if (this.probabilities) {
-                HashMap<String, Double> probPredictions = new HashMap<>();
+                TObjectDoubleHashMap<String> probPredictions = new TObjectDoubleHashMap<>();
                 for (String label : this.probWeightVectors.get(0).keySet()) {
                     // smoothing the probabilities with add 0.01 of 1 out of the vectors
                     // TO-DO: Shouldnt this smooth over the size of this.probWeightVectors.get(0)
                     probPredictions.put(label, 0.01/this.probWeightVectors.size());
                 }
                 // for each of the weight vectors obtained get its prediction
-                for (HashMap<String, HashMap<String, Double>> probWeightVector : this.probWeightVectors) {
+                for (THashMap<String, TObjectDoubleHashMap<String>> probWeightVector : this.probWeightVectors) {
                     Double maxScore = Double.NEGATIVE_INFINITY;
                     String maxLabel = null;
                     for (String label : probWeightVector.keySet()) {
-                        HashMap<String, Double> weightVector = probWeightVector.get(label);
+                        TObjectDoubleHashMap<String> weightVector = probWeightVector.get(label);
                         Double score = dotProduct(instance.getFeatureVector(), weightVector);
                         if (Double.compare(score, maxScore) > 0) {
                             maxScore = score;
@@ -172,24 +172,24 @@ public class JAROW implements Serializable {
 
         // Initialize the weight vectors in the beginning of training"
         // we have one variance and one weight vector per class
-        this.currentWeightVectors = new HashMap<>();
-        this.currentVarianceVectors = new HashMap<>();
+        this.currentWeightVectors = new THashMap<>();
+        this.currentVarianceVectors = new THashMap<>();
         
-        HashMap<String, HashMap<String, Double>> averagedWeightVectors = null;
+        THashMap<String, TObjectDoubleHashMap<String>> averagedWeightVectors = null;
         int updatesLeft = 0;
         if (averaging) {
-            averagedWeightVectors = new HashMap<>();
+            averagedWeightVectors = new THashMap<>();
             updatesLeft = rounds * instances.size();
         }
         for (String label : instances.get(0).getCosts().keySet()) {
-            this.currentWeightVectors.put(label, new HashMap<String, Double>());
+            this.currentWeightVectors.put(label, new TObjectDoubleHashMap<String>());
             // TO-DO: deal with sparse
             // remember: this is sparse in the sense that everething that doesn't have a value is 1
             // everytime we to do something with it, remember to add 1
-            this.currentVarianceVectors.put(label, new HashMap<String, Double>());
+            this.currentVarianceVectors.put(label, new TObjectDoubleHashMap<String>());
             // keep the averaged weight vector
             if (averaging && averagedWeightVectors != null) {
-                averagedWeightVectors.put(label, new HashMap<String, Double>());
+                averagedWeightVectors.put(label, new TObjectDoubleHashMap<String>());
             }
         }
         System.out.println("CWV: " + currentWeightVectors);
@@ -227,8 +227,8 @@ public class JAROW implements Serializable {
                         
                     // Calculate the confidence values
                     // first for the predicted label 
-                    HashMap<String, Double> zVectorPredicted = new HashMap<>();
-                    HashMap<String, Double> zVectorMinCorrect = new HashMap<>();
+                    TObjectDoubleHashMap<String> zVectorPredicted = new TObjectDoubleHashMap<>();
+                    TObjectDoubleHashMap<String> zVectorMinCorrect = new TObjectDoubleHashMap<>();
                     for (String feature : instance.getFeatureVector().keySet()) {
                         // the variance is either some value that is in the dict or just 1
                         if (this.currentVarianceVectors.get(prediction.getLabel()).containsKey(feature)) {
@@ -255,42 +255,42 @@ public class JAROW implements Serializable {
 
                     // update the current weight vectors
                     for (String feature : zVectorPredicted.keySet()) {
-                        this.currentWeightVectors.get(prediction.getLabel()).put(feature, this.currentWeightVectors.get(prediction.getLabel()).get(feature) - alpha * zVectorPredicted.get(feature));
+                        //this.currentWeightVectors.get(prediction.getLabel()).put(feature, this.currentWeightVectors.get(prediction.getLabel()).get(feature) - alpha * zVectorPredicted.get(feature));
+                        this.currentWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, - alpha * zVectorPredicted.get(feature), - alpha * zVectorPredicted.get(feature));
                     }                    
                     for (String feature : zVectorMinCorrect.keySet()) {
-                        this.currentWeightVectors.get(minCorrectLabel).put(feature, this.currentWeightVectors.get(minCorrectLabel).get(feature) + alpha * zVectorMinCorrect.get(feature));
+                        //this.currentWeightVectors.get(minCorrectLabel).put(feature, this.currentWeightVectors.get(minCorrectLabel).get(feature) + alpha * zVectorMinCorrect.get(feature));
+                        this.currentWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
                     }
                     if (averaging && averagedWeightVectors != null) {
                         for (String feature : zVectorPredicted.keySet()) {
-                            if (averagedWeightVectors.get(prediction.getLabel()).get(feature) == null) {
-                                averagedWeightVectors.get(prediction.getLabel()).put(feature, 0.0);
-                            }
-                            averagedWeightVectors.get(prediction.getLabel()).put(feature, averagedWeightVectors.get(prediction.getLabel()).get(feature) - alpha * updatesLeft* zVectorPredicted.get(feature));
+                            //averagedWeightVectors.get(prediction.getLabel()).put(feature, averagedWeightVectors.get(prediction.getLabel()).get(feature) - alpha * updatesLeft* zVectorPredicted.get(feature));
+                            averagedWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, - alpha * updatesLeft* zVectorPredicted.get(feature), - alpha * updatesLeft* zVectorPredicted.get(feature));
                         }
                         for (String feature : zVectorMinCorrect.keySet()) {
-                            if (averagedWeightVectors.get(minCorrectLabel).get(feature) == null) {
-                                averagedWeightVectors.get(minCorrectLabel).put(feature, 0.0);
-                            }
-                            averagedWeightVectors.get(minCorrectLabel).put(feature, averagedWeightVectors.get(minCorrectLabel).get(feature) + alpha * updatesLeft* zVectorMinCorrect.get(feature));
+                            //averagedWeightVectors.get(minCorrectLabel).put(feature, averagedWeightVectors.get(minCorrectLabel).get(feature) + alpha * updatesLeft* zVectorMinCorrect.get(feature));
+                            averagedWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, alpha * updatesLeft* zVectorMinCorrect.get(feature), alpha * updatesLeft* zVectorMinCorrect.get(feature));
                         }
                     }
                     
                     // update the diagonal covariance
                     for (String feature : instance.getFeatureVector().keySet()) {
                         // for the predicted
-			if (this.currentVarianceVectors.get(prediction.getLabel()).containsKey(feature)) {
+			/*if (this.currentVarianceVectors.get(prediction.getLabel()).containsKey(feature)) {
 			    this.currentVarianceVectors.get(prediction.getLabel()).put(feature, this.currentVarianceVectors.get(prediction.getLabel()).get(feature) - beta * Math.pow(zVectorPredicted.get(feature),2));
                         } else {
 			    // Never updated this covariance before, add 1
                             this.currentVarianceVectors.get(prediction.getLabel()).put(feature, 1 - beta * Math.pow(zVectorPredicted.get(feature),2));
-                        }
+                        }*/
+                        this.currentVarianceVectors.get(prediction.getLabel()).adjustOrPutValue(feature, - beta * Math.pow(zVectorPredicted.get(feature),2), 1 - beta * Math.pow(zVectorPredicted.get(feature),2));
                         // for the minCorrect
-			if (this.currentVarianceVectors.get(minCorrectLabel).containsKey(feature)) {
+			/*if (this.currentVarianceVectors.get(minCorrectLabel).containsKey(feature)) {
 			    this.currentVarianceVectors.get(minCorrectLabel).put(feature, this.currentVarianceVectors.get(minCorrectLabel).get(feature) - beta * Math.pow(zVectorMinCorrect.get(feature),2));
                         } else {
 			    // Never updated this covariance before, add 1
                             this.currentVarianceVectors.get(minCorrectLabel).put(feature, 1 - beta * Math.pow(zVectorMinCorrect.get(feature),2));
-                        }
+                        }*/
+                        this.currentVarianceVectors.get(minCorrectLabel).adjustOrPutValue(feature, - beta * Math.pow(zVectorMinCorrect.get(feature),2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature),2));
                     }
                 }
                 if (averaging) {
@@ -304,7 +304,8 @@ public class JAROW implements Serializable {
 	if (averaging && averagedWeightVectors != null) {
             for (String label : this.currentWeightVectors.keySet()) {
                 for (String feature : averagedWeightVectors.get(label).keySet()) {
-                    this.currentWeightVectors.get(label).put(label, this.currentWeightVectors.get(label).get(feature) + 1.0/((double)(rounds * instances.size())) * averagedWeightVectors.get(label).get(feature));
+                    //this.currentWeightVectors.get(label).put(feature, this.currentWeightVectors.get(label).get(feature) + 1.0/((double)(rounds * instances.size())) * averagedWeightVectors.get(label).get(feature));
+                    this.currentWeightVectors.get(label).adjustOrPutValue(feature, 1.0/((double)(rounds * instances.size())) * averagedWeightVectors.get(label).get(feature), 1.0/((double)(rounds * instances.size())) * averagedWeightVectors.get(label).get(feature));
                 }
             }
         }
@@ -344,9 +345,9 @@ public class JAROW implements Serializable {
         System.out.println("Generating samples for the weight vectors to obtain probability estimates");
         this.probWeightVectors = new ArrayList<>();
         for (int i  = 0; i < noWeightVectors; i++) {
-            this.probWeightVectors.add(new HashMap<String, HashMap<String, Double>>());
+            this.probWeightVectors.add(new THashMap<String, TObjectDoubleHashMap<String>>());
             for (String label : this.currentWeightVectors.keySet()) {
-                this.probWeightVectors.get(i).put(label, new HashMap<String, Double>());
+                this.probWeightVectors.get(i).put(label, new TObjectDoubleHashMap<String>());
             }
         }
 
@@ -457,15 +458,9 @@ public class JAROW implements Serializable {
         return classifier;
     }
     
-    public double dotProduct(HashMap<String, Double> a1, HashMap<String, Double> a2) {        
+    public double dotProduct(TObjectDoubleHashMap<String> a1, TObjectDoubleHashMap<String> a2) {        
         double product = 0.0;
         for (String label : a1.keySet()) {
-            if (a1.get(label) == null) {
-                a1.put(label, 0.0);
-            }
-            if (a2.get(label) == null) {
-                a2.put(label, 0.0);
-            }
             product += a1.get(label) * a2.get(label);
         }
         return product;
