@@ -67,7 +67,7 @@ public class Main {
         //instances = instances[:100]
         // ORIGINAL EVALUATION
         // Keep some instances to check the performance        
-        /*ArrayList<Instance> testingInstances = new ArrayList(instances.subList(((int) Math.round(instances.size() * 0.75)) + 1, instances.size()));
+        ArrayList<Instance> testingInstances = new ArrayList(instances.subList(((int) Math.round(instances.size() * 0.75)) + 1, instances.size()));
         ArrayList<Instance> trainingInstances = new ArrayList(instances.subList(0, (int) Math.round(instances.size() * 0.75)));
 
         System.out.println("training data: " + trainingInstances.size() + " instances");
@@ -75,14 +75,14 @@ public class Main {
 
         // the last parameter can be set to True if probabilities are needed.
         Double[] params = {0.01, 0.1, 1.0, 10.0, 100.0};
-        JAROW classifier_p = JAROW.trainOpt(trainingInstances, 10, params, 0.1, false);
+        JAROW classifier_p = JAROW.trainOpt(trainingInstances, 10, params, 0.1, true, false);
 
         Double cost = classifier_p.batchPredict(testingInstances);
         Double avgCost = cost/(double)testingInstances.size();
-        System.out.println("Avg Cost per instance " + avgCost + " on " + testingInstances.size() + " testing instances");*/
+        System.out.println("Avg Cost per instance " + avgCost + " on " + testingInstances.size() + " testing instances");
 
         //10-FOLD CROSS VALIDATION
-        for (double f = 0.0; f < 1.0; f += 0.1) {            
+        /*for (double f = 0.0; f < 1.0; f += 0.1) {            
             int from = ((int) Math.round(instances.size() * f)) + 1;
             if (from < instances.size()) {
                 int to = (int) Math.round(instances.size() * (f + 0.1));
@@ -100,14 +100,14 @@ public class Main {
 
                 // the last parameter can be set to True if probabilities are needed.
                 Double[] params = {0.01, 0.1, 1.0, 10.0, 100.0};
-                JAROW classifier_p = JAROW.trainOpt(trainingInstances, 10, params, 0.1, false);
+                JAROW classifier_p = JAROW.trainOpt(trainingInstances, 10, params, 0.1, true, false);
 
                 System.out.println("test data: " + testingInstances.size() + " instances");
                 Double cost = classifier_p.batchPredict(testingInstances);
                 Double avgCost = cost/(double)testingInstances.size();
                 System.out.println("Avg Cost per instance " + avgCost + " on " + testingInstances.size() + " testing instances");
             }
-        }
+        }*/
         
         /*#avgRatio = classifier_p.batchPredict(testingInstances, True)
         #print "entropy sums: " + str(avgRatio)
