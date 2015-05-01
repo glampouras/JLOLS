@@ -31,6 +31,10 @@ public class RoboCup {
     static ArrayList<String> dictionary = new ArrayList<>();
     static ArrayList<String> arguments = new ArrayList<>();
     static ArrayList<String> predicates = new ArrayList<>();
+    
+    final public static String TOKEN_END = "@end@";
+    final public static String TOKEN_ARG1 = "@arg1@";
+    final public static String TOKEN_ARG2 = "@arg2@";
 
     public static void main(String[] args) {
         createLists(new File("robocup_data\\gold\\"));
@@ -85,7 +89,7 @@ public class RoboCup {
         //Double[] params = {100.0, 80.0, 120.0, 150.0, 200.0};        
         //JAROW classifier_p = JAROW.trainOpt(instances, 10, params, 0.1, true, false);
         JAROW classifier_p = new JAROW();
-        classifier_p.train(instances, true, false, 10, 80.0, true);
+        classifier_p.train(instances, true, false, 10, 10.0, true);
         
         try {
             classifier_p.save(classifier_p, modelPath + "_model");
@@ -124,8 +128,20 @@ public class RoboCup {
                                 String arg2 = null;
                                 NodeList nl = node.getElementsByTagName("nl");
                                 if (nl != null && nl.getLength() > 0) {
-                                    String nlPhrase = ((Element) nl.item(0)).getFirstChild().getNodeValue().toLowerCase() + " @end@";
+                                    String nlPhrase = ((Element) nl.item(0)).getFirstChild().getNodeValue().toLowerCase().trim() + " " + RoboCup.TOKEN_END;
                                     nlWords = nlPhrase.replaceAll("\\'", " \\'").split(" ");
+                                    
+                                    boolean isFirst = true;
+                                    for (int w = 0; w < nlWords.length; w++) {
+                                        if (nlWords[w].startsWith("pink") || nlWords[w].startsWith("purple")) {
+                                            if (isFirst) {
+                                                nlWords[w] = RoboCup.TOKEN_ARG1;
+                                                isFirst = false;
+                                            } else {
+                                                nlWords[w] = RoboCup.TOKEN_ARG2;
+                                            }
+                                        }
+                                    }
                                     
                                     String[] predictWords = new String[nlWords.length];
                                     for (int w = 0; w < predictWords.length; w++) {
@@ -157,8 +173,16 @@ public class RoboCup {
                                         int arg2ID = arguments.indexOf(arg2);
                                         
                                         //WORD PREDICTION EVALUATION
+                                        boolean arg1mentioned = false;
+                                        boolean arg2mentioned = false;
                                         for (int w = 0; w < nlWords.length; w++) {
-                                            String trainingVector = createTrainingVectorChoice(arg1ID, arg2ID, nlWords, w);
+                                            String trainingVector = createTrainingVectorChoice(arg1ID, arg2ID, nlWords, w, arg1mentioned, arg2mentioned);
+                                            
+                                            if (nlWords[w].equals(RoboCup.TOKEN_ARG1)) {
+                                                arg1mentioned = true;
+                                            } else if (nlWords[w].equals(RoboCup.TOKEN_ARG2)) {
+                                                arg2mentioned = true;
+                                            }
                                             if (!trainingVector.isEmpty()) {
                                                 TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
                                                 TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
@@ -180,18 +204,24 @@ public class RoboCup {
                                                 total++;
 
                                                 predictWords[w] = predict.getLabel();
+                                                //System.out.println(trainingVector);
                                                 //System.out.println("T: " + nlWords[w] + " P: " + predict.getLabel());
                                             }
                                         }
-                                                        
+                                        
+                                        //System.out.println("------");
+                                        
                                         //PHRASE GENERATION EVALUATION
                                         String predictedWord = "";
                                         int w = 0;
                                         ArrayList<String> predictedWordsList = new ArrayList<>();
-                                        while (!predictedWord.equals("@end@") && predictedWordsList.size() < 10) {
+                                        arg1mentioned = false;
+                                        arg2mentioned = false;
+                                        while (!predictedWord.equals(RoboCup.TOKEN_END) && predictedWordsList.size() < 10) {
                                             predictedWordsList.add("@TOK@");
                                             
-                                            String trainingVector = createTrainingVectorChoice(arg1ID, arg2ID, predictedWordsList.toArray(new String[0]), w);
+                                            String trainingVector = createTrainingVectorChoice(arg1ID, arg2ID, predictedWordsList.toArray(new String[0]), w, arg1mentioned, arg2mentioned);
+                                            
                                             //System.out.println("TV " + trainingVector);
                                             if (!trainingVector.isEmpty()) {
                                                 TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
@@ -210,7 +240,15 @@ public class RoboCup {
                                                 Prediction predict = classifier_p.predict(new Instance(featureVector, costs));
                                                 predictedWord = predict.getLabel().trim();
                                                 predictedWordsList.set(w, predictedWord);
+                                                
+                                                //System.out.println(trainingVector);
                                                 //System.out.println("T: " + nlWords[w] + " P: " + predict.getLabel());
+                                                
+                                                if (predictedWord.equals(RoboCup.TOKEN_ARG1)) {
+                                                    arg1mentioned = true;
+                                                } else if (predictedWord.equals(RoboCup.TOKEN_ARG2)) {
+                                                    arg2mentioned = true;
+                                                }
                                             }
                                             w++;
                                         }
@@ -317,7 +355,9 @@ public class RoboCup {
     }
 
     public static void createLists(File dataFolder) {
-        dictionary.add("@end@");
+        dictionary.add(RoboCup.TOKEN_END);
+        dictionary.add(RoboCup.TOKEN_ARG1);
+        dictionary.add(RoboCup.TOKEN_ARG2);
         if (dataFolder.isDirectory()) {
             for (File file : dataFolder.listFiles()) {
                 if (file.isFile()) {
@@ -342,8 +382,21 @@ public class RoboCup {
 
                                 NodeList nl = node.getElementsByTagName("nl");
                                 if (nl != null && nl.getLength() > 0) {
-                                    String[] words = ((Element) nl.item(0)).getFirstChild().getNodeValue().toLowerCase().replaceAll("\\'", " \\'").toLowerCase().split(" ");
-                                    for (String word : words) {
+                                    String[] nlWords = ((Element) nl.item(0)).getFirstChild().getNodeValue().toLowerCase().replaceAll("\\'", " \\'").trim().toLowerCase().split(" ");
+                                    
+                                    boolean isFirst = true;
+                                    for (int w = 0; w < nlWords.length; w++) {
+                                        if (nlWords[w].startsWith("pink") || nlWords[w].startsWith("purple")) {
+                                            if (isFirst) {
+                                                nlWords[w] = RoboCup.TOKEN_ARG1;
+                                                isFirst = false;
+                                            } else {
+                                                nlWords[w] = RoboCup.TOKEN_ARG2;
+                                            }
+                                        }
+                                    }
+                                    
+                                    for (String word : nlWords) {
                                         if (!word.trim().isEmpty() && !dictionary.contains(word.trim())) {
                                             dictionary.add(word.trim());
                                         }
@@ -559,8 +612,19 @@ public class RoboCup {
 
                                     NodeList nl = node.getElementsByTagName("nl");
                                     if (nl != null && nl.getLength() > 0) {
-                                        String nlPhrase = ((Element) nl.item(0)).getFirstChild().getNodeValue().toLowerCase() + " @end@";
+                                        String nlPhrase = ((Element) nl.item(0)).getFirstChild().getNodeValue().toLowerCase().trim() + " " + RoboCup.TOKEN_END;
                                         nlWords = nlPhrase.replaceAll("\\'", " \\'").split(" ");
+                                    }
+                                    boolean isFirst = true;
+                                    for (int w = 0; w < nlWords.length; w++) {
+                                        if (nlWords[w].startsWith("pink") || nlWords[w].startsWith("purple")) {
+                                            if (isFirst) {
+                                                nlWords[w] = RoboCup.TOKEN_ARG1;
+                                                isFirst = false;
+                                            } else {
+                                                nlWords[w] = RoboCup.TOKEN_ARG2;
+                                            }
+                                        }
                                     }
                                     NodeList mrl = node.getElementsByTagName("mrl");
                                     if (mrl != null && mrl.getLength() > 0) {
@@ -585,11 +649,19 @@ public class RoboCup {
                                     int arg1ID = arguments.indexOf(arg1);
                                     // The ID of the second argument
                                     int arg2ID = arguments.indexOf(arg2);
+                                    
+                                    boolean arg1mentioned = false;
+                                    boolean arg2mentioned = false;
                                     if (nlWords != null) {
                                         for (int w = 0; w < nlWords.length; w++) {
-                                            String trainingVector = createTrainingVectorChoice(arg1ID, arg2ID, nlWords, w);
+                                            String trainingVector = createTrainingVectorChoice(arg1ID, arg2ID, nlWords, w, arg1mentioned, arg2mentioned);
                                             if (!trainingVector.isEmpty()) {
                                                 predicateTrainingData.get(predicate).add(trainingVector);
+                                            }
+                                            if (nlWords[w].equals(RoboCup.TOKEN_ARG1)) {
+                                                arg1mentioned = true;
+                                            } else if (nlWords[w].equals(RoboCup.TOKEN_ARG2)) {
+                                                arg2mentioned = true;
                                             }
                                         }
                                     }
@@ -617,8 +689,8 @@ public class RoboCup {
         }
     }
     
-    public static String createTrainingVectorChoice(int arg1ID, int arg2ID, String[] nlWords, int w) {
-        return createTrainingVectorDiffFeaturesPerClass(arg1ID, arg2ID, nlWords, w);
+    public static String createTrainingVectorChoice(int arg1ID, int arg2ID, String[] nlWords, int w, boolean arg1mentioned, boolean arg2mentioned) {
+        return createTrainingVectorDiffFeaturesPerClass(arg1ID, arg2ID, nlWords, w, arg1mentioned, arg2mentioned);
     }
     
     public static String createTrainingVector(int arg1ID, int arg2ID, String[] nlWords, int w) {
@@ -656,7 +728,7 @@ public class RoboCup {
         return trainingVector;
     }
     
-    public static String createTrainingVectorDiffFeaturesPerClass(int arg1ID, int arg2ID, String[] nlWords, int w) {
+    public static String createTrainingVectorDiffFeaturesPerClass(int arg1ID, int arg2ID, String[] nlWords, int w, boolean arg1mentioned, boolean arg2mentioned) {
         String trainingVector = "";
 
         String word = nlWords[w].toLowerCase().trim();
@@ -702,6 +774,17 @@ public class RoboCup {
             }
             //Word Positions
             //trainingVector += " " + (featureNo++) + ":" + w;
+            //If arguments have already been generated or not
+            if (arg1mentioned) {
+                trainingVector += " " + (featureNo++) + ":1";
+            } else {
+                trainingVector += " " + (featureNo++) + ":0";
+            }
+            if (arg2mentioned) {
+                trainingVector += " " + (featureNo++) + ":1";
+            } else {
+                trainingVector += " " + (featureNo++) + ":0";
+            }
         }
         return trainingVector;
     }
