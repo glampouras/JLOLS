@@ -84,6 +84,19 @@ public class RoboCup {
                 
          nlgTest("robocup_data\\");*/
 
+        for (String predicateStr : predicates) {
+            NISTScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+            BLEUScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+            BLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+
+            unbiasedNISTScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+            unbiasedBLEUScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+            unbiasedBLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+
+            oneRefNISTScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+            oneRefBLEUScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+            oneRefBLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
+        }
         if (dataFolder.isDirectory()) {
             for (int f = 0; f < dataFolder.listFiles().length; f++) {
                 File file = dataFolder.listFiles()[f];
@@ -91,20 +104,9 @@ public class RoboCup {
                 createTrainingDatasets(new File("robocup_data\\gold\\"), "robocup_data\\goldTrainingData", f);
 
                 for (String predicateStr : predicates) {
-                    NISTScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
-                    BLEUScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
-                    BLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
-                    
-                    unbiasedNISTScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
-                    unbiasedBLEUScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
-                    unbiasedBLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
-                    
-                    oneRefNISTScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
-                    oneRefBLEUScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
-                    oneRefBLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<Double>());
                     genTest("robocup_data\\", file, f, predicateStr);
                 }
-                //genTest("robocup_data\\", file, f, "pass");
+                //genTest("robocup_data\\", file, f, "playmode");
             }
         }        
         for (String predicateStr : predicates) {            
@@ -1142,7 +1144,12 @@ public class RoboCup {
         //JAROW classifierWords = new JAROW();
         //classifierWords.train(trainingWordInstances, true, false, 10, 10.0, true);        
         Double[] params = {0.01, 0.1, 1.0, 10.0, 100.0};
-        JAROW classifierWords = JAROW.trainOpt(trainingWordInstances, 10, params, 0.1, true, false);
+        JAROW classifierWords = JAROW.trainOpt(trainingWordInstances, 20, params, 0.1, true, true);
+        try {
+            classifierWords.save(classifierWords, "model_" + predicateStr);
+        } catch (IOException ex) {
+            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+        }
 
         Document dom = null;
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
@@ -1451,19 +1458,20 @@ public class RoboCup {
                             //BLEUinc.add(tran);
                             //BLEUincSmooth.add(tran);
 
-                            if (unbiasedBLEUScore < 1.0) {
+                            //if (unbiasedBLEUScore < 1.0) {
                                 System.out.println("T: " + ((Element) nl.item(0)).getFirstChild().getNodeValue().trim().toLowerCase());
                                 System.out.println("P: " + predictedString);
                                 System.out.println("A: " + predictedStringWithArgs);
                                 //System.out.println("REFS: " + createUnbiasedReferenceList(arg1name, arg2name));
                                 System.out.println("BLEU: " + unbiasedBLEUScore);
                                 System.out.println("==============");
-                            }
+                            //}
                             
                         }
                     }
                 }
                 if (generations.size() > 0) {
+                    System.out.println("PREDICATE:\t" + predicateStr);
                     //System.out.println("INC NIST SCORE:\t" + NISTinc.score());
                     System.out.println("BATCH NIST SCORE:\t" + NIST.score(generations));
                     //System.out.println("INC BLEU SCORE:\t" + BLEUinc.score());

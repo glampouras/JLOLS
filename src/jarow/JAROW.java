@@ -409,7 +409,11 @@ public class JAROW implements Serializable {
         Double lowestCost = Double.POSITIVE_INFINITY;
         JAROW bestClassifier = null;
         ArrayList<Instance> trainingInstances = new ArrayList(instances.subList(0, (int) Math.round(instances.size() * (1 - heldout))));
-        ArrayList<Instance> testingInstances = new ArrayList(instances.subList(((int) Math.round(instances.size() * (1 - heldout))) + 1, instances.size()));
+        int to = ((int) Math.round(instances.size() * (1 - heldout))) + 1;
+        if (to >= instances.size()) {
+            to = instances.size() - 1;
+        }
+        ArrayList<Instance> testingInstances = new ArrayList(instances.subList(to, instances.size()));
         for (Double param : paramValues) {
             System.out.println("Training with param=" + param + " on " + trainingInstances.size() + " instances");
             // Keep the weight vectors produced in each round
@@ -450,7 +454,7 @@ public class JAROW implements Serializable {
         }
         
         // Now train the final model:
-        System.out.println("Training with param=" + bestParam + " on all the data");
+        System.out.println("Training with best param=" + bestParam + " on all the data");
 
         JAROW finalClassifier = new JAROW();
         finalClassifier.train(instances, true, true, rounds, bestParam, true);
