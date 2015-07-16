@@ -1,4 +1,4 @@
-package uk.ac.ucl.jdagger.jarow;
+package uk.ac.ucl.jarow;
 
 public class Action {
     private String decision;

@@ -3,33 +3,32 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package uk.ac.ucl.jdagger.jarow;
+package uk.ac.ucl.jdagger;
 
 import gnu.trove.map.hash.TObjectDoubleHashMap;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Random;
-import uk.ac.ucl.jdagger.jarow.Action;
-import uk.ac.ucl.jdagger.jarow.ActionSequence;
-import uk.ac.ucl.jdagger.jarow.Instance;
-import uk.ac.ucl.jdagger.jarow.JAROW;
-import uk.ac.ucl.jdagger.jarow.MeaningRepresentation;
-import uk.ac.ucl.jdagger.jarow.Prediction;
-import uk.ac.ucl.jdagger.jarow.RoboCup;
-import static uk.ac.ucl.jdagger.jarow.RoboCup.createUnbiasedReferenceList;
-import static uk.ac.ucl.jdagger.jarow.RoboCup.createWordTrainingVectorChoice;
-import static uk.ac.ucl.jdagger.jarow.RoboCup.getReferencePolicy;
+import uk.ac.ucl.jarow.Action;
+import uk.ac.ucl.jarow.ActionSequence;
+import uk.ac.ucl.jarow.Instance;
+import uk.ac.ucl.jarow.JAROW;
+import uk.ac.ucl.jarow.MeaningRepresentation;
+import uk.ac.ucl.jarow.Prediction;
+import uk.ac.ucl.jarow.RoboCup;
+import static uk.ac.ucl.jarow.RoboCup.createUnbiasedReferenceList;
+import static uk.ac.ucl.jarow.RoboCup.createWordInstance;
 
 /**
  *
  * @author localadmin
  */
-public class JDAgger {           
+public class JDAgger {
+
     public static Random r = new Random();
-    
+
     public static JAROW runStochasticDAgger(ArrayList<Instance> trainingWordInstances, ArrayList<MeaningRepresentation> meaningReprs, ArrayList<Action> availableActions, HashMap<ActionSequence, Integer> referencePolicy, int epochs, double beta) {
         ArrayList<String> unbiasedRefList = createUnbiasedReferenceList();
 
@@ -55,10 +54,10 @@ public class JDAgger {
                 //System.out.println("M " + actSeq.getSequenceToString());
 
                 //ROLL-OUT
-                ActionSequence modActSeq = getReferencePolicyRollOut(actSeq, referencePolicy, unbiasedRefList);
+                ActionSequence rollOutSeq = getReferencePolicyRollOut(actSeq, referencePolicy, unbiasedRefList);
 
                 //GENERATE NEW TRAINING EXAMPLE
-                trainingWordInstances.add(generateTrainingInstance(meaningRepr, availableActions, modActSeq, index));
+                trainingWordInstances.add(generateTrainingInstance(meaningRepr, availableActions, rollOutSeq, index));
 
                 //System.out.println("|-> " + modActSeq.getSequenceToString());
                 //System.out.println("C " + modActSeq.getCost());
@@ -69,6 +68,55 @@ public class JDAgger {
         return classifierWords;
     }
 
+    public static JAROW runLOLS(ArrayList<Instance> trainingWordInstances, ArrayList<MeaningRepresentation> meaningReprs, ArrayList<Action> availableActions, HashMap<ActionSequence, Integer> referencePolicy, int epochs, double beta) {
+        ArrayList<String> unbiasedRefList = createUnbiasedReferenceList();
+
+        ArrayList<JAROW> trainedClassifiers = new ArrayList();
+        //INITIALIZE A POLICY P_0 (initializing on ref)
+        JAROW classifierWords = trainClassifier(trainingWordInstances);
+        for (int i = 1; i <= epochs; i++) {
+            for (MeaningRepresentation meaningRepr : meaningReprs) {
+                trainedClassifiers.add(classifierWords);
+                
+                //Initialize new training set
+                ArrayList<Instance> newTrainingInstances = new ArrayList();
+                //ROLL-IN
+                ActionSequence actSeq = getLearnedPolicyRollIn(meaningRepr, classifierWords, unbiasedRefList);
+
+                //FOR EACH ACTION IN ROLL-IN SEQUENCE
+                //The number of actions is not definite...might cause issues
+                for (int index = 0; index < actSeq.getSequence().size(); index++) {                    
+                    //FOR EACH POSSIBLE ALTERNATIVE ACTION
+                    ActionSequence rollOutSeq = null;
+                    TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
+
+                    availableActions.stream().forEach((action) -> {
+                        costs.put(action.getDecision(), 1.0);
+                    });
+                    for (Action availableAction : availableActions) {
+                        if (!availableAction.getDecision().equals(actSeq.getSequence().get(index).getDecision())) {
+                            //System.out.println("->| " + actSeq.getSequenceToString());
+                            actSeq.modifyAndShortenSequence(index, availableAction.getDecision());
+                            //System.out.println("M " + actSeq.getSequenceToString());
+                            //ROLL-OUT
+                            rollOutSeq = getPolicyRollOut(actSeq, referencePolicy, unbiasedRefList, meaningRepr, classifierWords, beta);
+                            costs.put(availableAction.getDecision(), rollOutSeq.getCost());
+                        }
+                    }
+
+                    //GENERATE NEW TRAINING EXAMPLE
+                    newTrainingInstances.add(generateTrainingInstance(meaningRepr, availableActions, rollOutSeq, index, costs));
+                }
+
+                //UPDATE CLASSIFIER
+                classifierWords = trainClassifier(newTrainingInstances);
+            }
+        }
+        
+        //FIRST NEED TO AVERAGE OVER ALL CLASSIFIERS
+        return classifierWords;
+    }
+
     public static ActionSequence getPolicyRollIn(HashMap<ActionSequence, Integer> referencePolicy, ArrayList<String> unbiasedRefList, MeaningRepresentation mr, JAROW classifierWords, double p) {
         double v = r.nextDouble();
 
@@ -76,6 +124,16 @@ public class JDAgger {
             return getReferencePolicyRollIn(referencePolicy);
         } else {
             return getLearnedPolicyRollIn(mr, classifierWords, unbiasedRefList);
+        }
+    }
+    
+    public static ActionSequence getPolicyRollOut(ActionSequence actSeq, HashMap<ActionSequence, Integer> referencePolicy, ArrayList<String> unbiasedRefList, MeaningRepresentation mr, JAROW classifierWords, double p) {
+        double v = r.nextDouble();
+
+        if (v <= p) {
+            return getReferencePolicyRollOut(actSeq, referencePolicy, unbiasedRefList);
+        } else {
+            return getLearnedPolicyRollOut(actSeq, mr, classifierWords, referencePolicy, unbiasedRefList);
         }
     }
 
@@ -160,24 +218,9 @@ public class JDAgger {
         while (!predictedWord.equals(RoboCup.TOKEN_END) && predictedWordsList.size() < 10000) {
             ArrayList<String> tempList = new ArrayList(predictedWordsList);
             tempList.add("@TOK@");
-            String trainingVector = createWordTrainingVectorChoice(tempList, w, arg1toBeMentioned, arg2toBeMentioned);
-
-            //System.out.println("TV " + trainingVector);
-            if (!trainingVector.isEmpty()) {
-                TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
-                TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-
-                String[] details;
-                details = trainingVector.split(" ");
-
-                for (int j = 1; j < details.length; j++) {
-                    String[] feature;
-                    feature = details[j].split(":");
-
-                    featureVector.put(feature[0], Double.parseDouble(feature[1]));
-                }
-
-                Prediction predict = classifierWords.predict(new Instance(featureVector, costs));
+            Instance trainingVector = createWordInstance(tempList, w, arg1toBeMentioned, arg2toBeMentioned);
+            if (trainingVector != null) {
+                Prediction predict = classifierWords.predict(trainingVector);
                 predictedWord = predict.getLabel().trim();
                 predictedWordsList.add(predictedWord);
 
@@ -186,9 +229,6 @@ public class JDAgger {
                 } else if (predictedWord.equals(RoboCup.TOKEN_ARG2)) {
                     arg2toBeMentioned = false;
                 }
-
-                //System.out.println(trainingVector);
-                //System.out.println("T: " + nlWords[w] + " P: " + predict.getLabel());
             }
             w++;
         }
@@ -200,74 +240,56 @@ public class JDAgger {
         return new ActionSequence(actionList, unbiasedRefList);
     }
 
-    /*public static ActionSequence getLearnedPolicyRollOut(ActionSequence pAS, MeaningRepresentation mr, JAROW classifierWords, HashMap<ActionSequence, Integer> referencePolicy, double p) {
-     String predictedWord = "";
-     int w = 0;
-     ArrayList<String> predictedWordsList = new ArrayList<>();
-     boolean arg1toBeMentioned = false;
-     boolean arg2toBeMentioned = false;
-     for (String argument : mr.getArguments()) {
-     if (mr.getArguments().indexOf(argument) == 0) {
-     arg1toBeMentioned = true;
-     } else if (mr.getArguments().indexOf(argument) == 1) {
-     arg2toBeMentioned = true;
-     }
-     }
-     for (Action a : pAS.getSequence()) {
-     predictedWord = a.getDecision();
+    public static ActionSequence getLearnedPolicyRollOut(ActionSequence pAS, MeaningRepresentation mr, JAROW classifierWords, HashMap<ActionSequence, Integer> referencePolicy, ArrayList<String> unbiasedRefList) {
+        String predictedWord = "";
+        int w = 0;
+        ArrayList<String> predictedWordsList = new ArrayList<>();
+        boolean arg1toBeMentioned = false;
+        boolean arg2toBeMentioned = false;
+        for (String argument : mr.getArguments()) {
+            if (mr.getArguments().indexOf(argument) == 0) {
+                arg1toBeMentioned = true;
+            } else if (mr.getArguments().indexOf(argument) == 1) {
+                arg2toBeMentioned = true;
+            }
+        }
+        for (Action a : pAS.getSequence()) {
+            predictedWord = a.getDecision();
 
-     predictedWordsList.add(predictedWord);
-     if (predictedWord.equals(RoboCup.TOKEN_ARG1)) {
-     arg1toBeMentioned = false;
-     } else if (predictedWord.equals(RoboCup.TOKEN_ARG1)) {
-     arg2toBeMentioned = false;
-     }
-     }
+            predictedWordsList.add(predictedWord);
+            if (predictedWord.equals(RoboCup.TOKEN_ARG1)) {
+                arg1toBeMentioned = false;
+            } else if (predictedWord.equals(RoboCup.TOKEN_ARG2)) {
+                arg2toBeMentioned = false;
+            }
+        }
 
-     while (!predictedWord.equals(RoboCup.TOKEN_END) && predictedWordsList.size() < 10000) {
-     ArrayList<String> tempList = new ArrayList(predictedWordsList);
-     tempList.add("@TOK@");
-     String trainingVector = createWordTrainingVectorChoice(tempList, w, arg1toBeMentioned, arg2toBeMentioned);
+        while (!predictedWord.equals(RoboCup.TOKEN_END) && predictedWordsList.size() < 10000) {
+            ArrayList<String> tempList = new ArrayList(predictedWordsList);
+            tempList.add("@TOK@");
+            Instance trainingVector = createWordInstance(tempList, w, arg1toBeMentioned, arg2toBeMentioned);
+            if (trainingVector != null) {
+                Prediction predict = classifierWords.predict(trainingVector);
+                predictedWord = predict.getLabel().trim();
+                predictedWordsList.add(predictedWord);
 
-     //System.out.println("TV " + trainingVector);
-     if (!trainingVector.isEmpty()) {
-     TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
-     TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
+                if (predictedWord.equals(RoboCup.TOKEN_ARG1)) {
+                    arg1toBeMentioned = false;
+                } else if (predictedWord.equals(RoboCup.TOKEN_ARG2)) {
+                    arg2toBeMentioned = false;
+                }
+            }
+            w++;
+        }
 
-     String[] details;
-     details = trainingVector.split(" ");
+        ArrayList<Action> actionList = new ArrayList<>();
+        for (String word : predictedWordsList) {
+            actionList.add(new Action(word));
+        }
+        return new ActionSequence(actionList, unbiasedRefList);
+    }
 
-     for (int j = 1; j < details.length; j++) {
-     String[] feature;
-     feature = details[j].split(":");
-
-     featureVector.put(feature[0], Double.parseDouble(feature[1]));
-     }
-
-     Prediction predict = classifierWords.predict(new Instance(featureVector, costs));
-     predictedWord = predict.getLabel().trim();
-     predictedWordsList.add(predictedWord);
-
-     if (predictedWord.equals(RoboCup.TOKEN_ARG1)) {
-     arg1toBeMentioned = false;
-     } else if (predictedWord.equals(RoboCup.TOKEN_ARG2)) {
-     arg2toBeMentioned = false;
-     }
-
-     //System.out.println(trainingVector);
-     //System.out.println("T: " + nlWords[w] + " P: " + predict.getLabel());
-     }
-     w++;
-     }
-
-     ArrayList<Action> actionList = new ArrayList<>();        
-     for (String word : predictedWordsList) {
-     actionList.add(new Action(word));
-     }
-     return new ActionSequence(actionList, unbiasedRefList);
-     }*/
-    
-    public static Instance generateTrainingInstance(MeaningRepresentation meaningRepr, ArrayList<Action> availableActions, ActionSequence modActSeq, int index) {        
+    public static Instance generateTrainingInstance(MeaningRepresentation meaningRepr, ArrayList<Action> availableActions, ActionSequence modActSeq, int index) {
         boolean arg1toBeMentioned = false;
         boolean arg2toBeMentioned = false;
         for (String argument : meaningRepr.getArguments()) {
@@ -278,8 +300,8 @@ public class JDAgger {
             }
         }
         ArrayList<String> predictedWordsList = new ArrayList<>();
-        for (Action a : modActSeq.getSequence()) {
-            String predictedWord = a.getDecision();
+        for (int i = 0; i <= index; i++) {
+            String predictedWord = modActSeq.getSequence().get(i).getDecision();
 
             predictedWordsList.add(predictedWord);
             if (predictedWord.equals(RoboCup.TOKEN_ARG1)) {
@@ -288,27 +310,33 @@ public class JDAgger {
                 arg2toBeMentioned = false;
             }
         }
-        String wordTrainingVector = createWordTrainingVectorChoice(predictedWordsList, index, arg1toBeMentioned, arg2toBeMentioned);
-
-        String[] details;
-        details = wordTrainingVector.split(" ");
-        TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
-        TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-
-        availableActions.stream().forEach((action) -> {
-            costs.put(action.getDecision(), 1.0);
-        });
-        costs.put(availableActions.get(Integer.parseInt(details[0])).getDecision(), modActSeq.getCost());
-
-        for (int j = 1; j < details.length; j++) {
-            String[] feature;
-            feature = details[j].split(":");
-
-            featureVector.put(feature[0], 1 - Double.parseDouble(feature[1]));
-        }
-        return new Instance(featureVector, costs);
+        return createWordInstance(predictedWordsList, index, modActSeq.getCost(), arg1toBeMentioned, arg2toBeMentioned);
     }
     
+    public static Instance generateTrainingInstance(MeaningRepresentation meaningRepr, ArrayList<Action> availableActions, ActionSequence modActSeq, int index, TObjectDoubleHashMap<String> costs) {
+        boolean arg1toBeMentioned = false;
+        boolean arg2toBeMentioned = false;
+        for (String argument : meaningRepr.getArguments()) {
+            if (meaningRepr.getArguments().indexOf(argument) == 0) {
+                arg1toBeMentioned = true;
+            } else if (meaningRepr.getArguments().indexOf(argument) == 1) {
+                arg2toBeMentioned = true;
+            }
+        }
+        ArrayList<String> predictedWordsList = new ArrayList<>();
+        for (int i = 0; i <= index; i++) {
+            String predictedWord = modActSeq.getSequence().get(i).getDecision();
+
+            predictedWordsList.add(predictedWord);
+            if (predictedWord.equals(RoboCup.TOKEN_ARG1)) {
+                arg1toBeMentioned = false;
+            } else if (predictedWord.equals(RoboCup.TOKEN_ARG2)) {
+                arg2toBeMentioned = false;
+            }
+        }
+        return createWordInstance(predictedWordsList, index, costs, arg1toBeMentioned, arg2toBeMentioned);
+    }
+
     public static JAROW trainClassifier(ArrayList<Instance> trainingWordInstances) {
         JAROW classifierWords = new JAROW();
         Collections.shuffle(trainingWordInstances);

@@ -1,14 +1,12 @@
-package uk.ac.ucl.jdagger.jarow;
+package uk.ac.ucl.jarow;
 
 import edu.stanford.nlp.mt.metrics.BLEUMetric;
-import edu.stanford.nlp.mt.metrics.IncrementalEvaluationMetric;
 import edu.stanford.nlp.mt.metrics.NISTMetric;
 import edu.stanford.nlp.mt.tools.NISTTokenizer;
 import edu.stanford.nlp.mt.util.IString;
 import edu.stanford.nlp.mt.util.IStrings;
 import edu.stanford.nlp.mt.util.ScoredFeaturizedTranslation;
 import edu.stanford.nlp.mt.util.Sequence;
-import edu.stanford.nlp.mt.util.SimpleSequence;
 import gnu.trove.map.hash.TObjectDoubleHashMap;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -38,6 +36,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 import similarity_measures.Levenshtein;
+import uk.ac.ucl.jdagger.JDAgger;
 
 public class RoboCup {
 
@@ -266,17 +265,15 @@ public class RoboCup {
 
                 TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
                 TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-
-                for (String word : dictionary) {
-                    costs.put(word, 1.0);
-                }
-                costs.put(dictionary.get(Integer.parseInt(details[0])), 0.0);
-
-                for (int i = 1; i < details.length; i++) {
+                for (int i = 0; i < details.length; i++) {
                     String[] feature;
                     feature = details[i].split(":");
 
-                    featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                    if (feature[0].startsWith("feature_")) {
+                        featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                    } else if (feature[0].startsWith("cost_")) {                        
+                        costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
+                    }
                 }
                 wordInstances.add(new Instance(featureVector, costs));
                 //System.out.println(instances.get(instances.size() - 1).getCosts());
@@ -353,17 +350,15 @@ public class RoboCup {
 
                 TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
                 TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-
-                for (String word : dictionary) {
-                    costs.put(word, 1.0);
-                }
-                costs.put(dictionary.get(Integer.parseInt(details[0])), 0.0);
-
-                for (int i = 1; i < details.length; i++) {
+                for (int i = 0; i < details.length; i++) {
                     String[] feature;
                     feature = details[i].split(":");
 
-                    featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                    if (feature[0].startsWith("feature_")) {
+                        featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                    } else if (feature[0].startsWith("cost_")) {                        
+                        costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
+                    }
                 }
                 wordInstances.add(new Instance(featureVector, costs));
                 //System.out.println(instances.get(instances.size() - 1).getCosts());
@@ -381,20 +376,18 @@ public class RoboCup {
             while ((line = br.readLine()) != null) {
                 String[] details;
                 details = line.split(" ");
-
+                
                 TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
                 TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-
-                for (String word : argDictionary) {
-                    costs.put(word, 1.0);
-                }
-                costs.put(argDictionary.get(Integer.parseInt(details[0])), 0.0);
-
-                for (int i = 1; i < details.length; i++) {
+                for (int i = 0; i < details.length; i++) {
                     String[] feature;
                     feature = details[i].split(":");
 
-                    featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                    if (feature[0].startsWith("feature_")) {
+                        featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                    } else if (feature[0].startsWith("cost_")) {                        
+                        costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
+                    }
                 }
                 argInstances.add(new Instance(featureVector, costs));
                 //System.out.println(instances.get(instances.size() - 1).getCosts());
@@ -423,20 +416,18 @@ public class RoboCup {
             while ((line = br.readLine()) != null) {
                 String[] details;
                 details = line.split(" ");
-
+                
                 TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
                 TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-
-                for (String word : dictionary) {
-                    costs.put(word, 0.0);
-                }
-                costs.put(dictionary.get(Integer.parseInt(details[0])), 1.0);
-
-                for (int i = 1; i < details.length; i++) {
+                for (int i = 0; i < details.length; i++) {
                     String[] feature;
                     feature = details[i].split(":");
 
-                    featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                    if (feature[0].startsWith("feature_")) {
+                        featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                    } else if (feature[0].startsWith("cost_")) {                        
+                        costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
+                    }
                 }
                 instances.add(new Instance(featureVector, costs));
                 //System.out.println(instances.get(instances.size()).getCosts());
@@ -993,7 +984,7 @@ public class RoboCup {
                                          System.out.println(nlWordsList);
                                          }*/
                                         for (int w = 0; w < nlWordsList.size(); w++) {
-                                            String wordTrainingVector = createWordTrainingVectorChoice(nlWordsList, w, arg1toBeMentioned, arg2toBeMentioned);
+                                            String wordTrainingVector = createStringWordInstance(nlWordsList, w, arg1toBeMentioned, arg2toBeMentioned);
                                             /*if (predicate.equals("defense")) {
                                              System.out.println(nlWordsList.get(w));
                                              System.out.println(wordTrainingVector);
@@ -1260,62 +1251,29 @@ public class RoboCup {
         return referencePolicy;
     }
 
-    public static String createWordTrainingVectorChoice(ArrayList<String> nlWords, int w, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
-        return createTrainingVectorDiffFeaturesPerClass(nlWords, w, arg1toBeMentioned, arg2toBeMentioned);
-    }
-
-    public static String createTrainingVector(int arg1ID, int arg2ID, String[] nlWords, int w) {
-        /*System.out.print("NLW ");
-         for (String word : nlWords) {
-         System.out.print(word + " ");
-         }
-         System.out.println();*/
-
+    public static String createStringWordInstance(ArrayList<String> nlWords, int w, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
         String trainingVector = "";
 
-        String word = nlWords[w].toLowerCase().trim();
+        String bestAction = nlWords.get(w).toLowerCase().trim();
         int featureNo = 1;
-        if (!word.isEmpty()) {
-            // The ID of the class (the word which should be generated) according to the dictionary
-            int wordClassID = dictionary.indexOf(word);
-            //Class and argument features
-            trainingVector = wordClassID + "";
-            trainingVector += " " + (featureNo++) + ":" + arg1ID;
-            trainingVector += " " + (featureNo++) + ":" + arg2ID;
-            //Previous word features
-            for (int j = 1; j <= 5; j++) {
-                int previousWordID = -1;
-                if (w - j >= 0) {
-                    String previousWord = nlWords[w - j].trim();
-                    previousWordID = dictionary.indexOf(previousWord);
+        if (!bestAction.isEmpty()) {
+            //COSTS
+            for (String action : dictionary) {
+                if (action.equals(bestAction)) {
+                    trainingVector += " " + "cost_" + action + ":0.0";
+                } else {
+                    trainingVector += " " + "cost_" + action + ":1.0";
                 }
-                trainingVector += " " + (featureNo++) + ":" + previousWordID;
             }
-            //Word Positions
-            //trainingVector += " " + (featureNo++) + ":" + w;
-            //THIS WORD 
-            //trainingVector += " " + (featureNo++) + ":" + dictionary.indexOf(word);
-        }
-        return trainingVector;
-    }
-
-    public static String createTrainingVectorDiffFeaturesPerClass(ArrayList<String> nlWords, int w, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
-        String trainingVector = "";
-
-        String word = nlWords.get(w).toLowerCase().trim();
-        int featureNo = 1;
-        if (!word.isEmpty()) {
-            // The ID of the class (the word which should be generated) according to the dictionary
-            int wordClassID = dictionary.indexOf(word);
-            //Class and argument features
-            trainingVector = wordClassID + "";
+            
+            //FEATURES
             //Arg1 ID
             /*for (int i = 0; i < arguments.size(); i++) {
              int featureValue = 0;
              if (i == arg1ID) {
              featureValue = 1;
              }
-             trainingVector += " " + (featureNo++) + ":" + featureValue;
+             trainingVector += " " + "feature_" + (featureNo++) + ":" + featureValue;
              }
              //Arg2 ID
              for (int i = 0; i < arguments.size(); i++) {
@@ -1323,7 +1281,7 @@ public class RoboCup {
              if (i == arg2ID) {
              featureValue = 1;
              }
-             trainingVector += " " + (featureNo++) + ":" + featureValue;
+             trainingVector += " " + "feature_" + (featureNo++) + ":" + featureValue;
              }*/
             //Previous word features
             for (int j = 1; j <= 5; j++) {
@@ -1341,47 +1299,127 @@ public class RoboCup {
                     if (!previousWord.isEmpty() && dictionary.get(i).equals(previousWord)) {
                         featureValue = 1;
                     }
-                    trainingVector += " " + (featureNo++) + ":" + featureValue;
+                    trainingVector += " " + "feature_" + (featureNo++) + ":" + featureValue;
                 }
                 if (previousWord.isEmpty()) {
-                    trainingVector += " " + (featureNo++) + ":1";
+                    trainingVector += " " + "feature_" + (featureNo++) + ":1";
                 } else {
-                    trainingVector += " " + (featureNo++) + ":0";
+                    trainingVector += " " + "feature_" + (featureNo++) + ":0";
                 }
             }
             //Word Positions
-            //trainingVector += " " + (featureNo++) + ":" + w/20;
+            //trainingVector += " " + "feature_" + (featureNo++) + ":" + w/20;
             //If arguments have already been generated or not
             if (arg1toBeMentioned) {
-                trainingVector += " " + (featureNo++) + ":1";
+                trainingVector += " " + "feature_" + (featureNo++) + ":1";
             } else {
-                trainingVector += " " + (featureNo++) + ":0";
+                trainingVector += " " + "feature_" + (featureNo++) + ":0";
             }
             if (arg2toBeMentioned) {
-                trainingVector += " " + (featureNo++) + ":1";
+                trainingVector += " " + "feature_" + (featureNo++) + ":1";
             } else {
-                trainingVector += " " + (featureNo++) + ":0";
+                trainingVector += " " + "feature_" + (featureNo++) + ":0";
             }
         }
         return trainingVector;
     }
+    
+    public static Instance createWordInstance(ArrayList<String> nlWords, int w, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
+        TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
+        String bestAction = nlWords.get(w).toLowerCase().trim();
+        if (!bestAction.isEmpty()) {
+            //COSTS
+            for (String action : dictionary) {
+                if (action.equals(bestAction)) {
+                    costs.put(action, 0.0);
+                } else {
+                    costs.put(action, 1.0);
+                }
+            }
+        }
+        return createWordInstance(nlWords, w, costs, arg1toBeMentioned, arg2toBeMentioned);
+    }
+    
+    public static Instance createWordInstance(ArrayList<String> nlWords, int w, double cost, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
+        TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
+        String bestAction = nlWords.get(w).toLowerCase().trim();
+        if (!bestAction.isEmpty()) {
+            //COSTS
+            for (String action : dictionary) {
+                if (action.equals(bestAction)) {
+                    costs.put(action, cost);
+                } else {
+                    costs.put(action, 1.0);
+                }
+            }
+        }
+        return createWordInstance(nlWords, w, costs, arg1toBeMentioned, arg2toBeMentioned);
+    }
+    
+    public static Instance createWordInstance(ArrayList<String> nlWords, int w, TObjectDoubleHashMap<String> costs, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
+        TObjectDoubleHashMap<String> features = new TObjectDoubleHashMap<>();
 
-    public static String createArgTrainingVector(int argID, String word) {
+        int featureNo = 0;            
+        //Previous word features
+        for (int j = 1; j <= 5; j++) {
+            /*int previousWordID = -1;
+             if (w - j >= 0) {
+             String previousWord = nlWords[w - j].trim();
+             previousWordID = dictionary.indexOf(previousWord);
+             }*/
+            String previousWord = "";
+            if (w - j >= 0) {
+                previousWord = nlWords.get(w - j).trim();
+            }
+            for (int i = 0; i < dictionary.size(); i++) {
+                int featureValue = 0;
+                if (!previousWord.isEmpty() && dictionary.get(i).equals(previousWord)) {
+                    featureValue = 1;
+                }
+                features.put("feature_" + (featureNo++), featureValue);
+            }
+            if (previousWord.isEmpty()) {
+                features.put("feature_" + (featureNo++), 1.0);
+            } else {
+                features.put("feature_" + (featureNo++), 0.0);
+            }
+        }
+        //Word Positions
+        //trainingVector += " " + "feature_" + (featureNo++) + ":" + w/20;
+        //If arguments have already been generated or not
+        if (arg1toBeMentioned) {
+            features.put("feature_" + (featureNo++), 1.0);
+        } else {
+            features.put("feature_" + (featureNo++), 0.0);
+        }
+        if (arg2toBeMentioned) {
+            features.put("feature_" + (featureNo++), 1.0);
+        } else {
+            features.put("feature_" + (featureNo++), 0.0);
+        }
+        return new Instance(features, costs);
+    }
+
+    public static String createArgTrainingVector(int argID, String bestAction) {
         String trainingVector = "";
 
         int featureNo = 1;
-        if (!word.isEmpty()) {
-            // The ID of the class (the word which should be generated) according to the dictionary
-            int wordClassID = argDictionary.indexOf(word);
-            //Class and argument features
-            trainingVector = wordClassID + "";
+        if (!bestAction.isEmpty()) {
+            //COSTS
+            for (String action : dictionary) {
+                if (action.equals(bestAction)) {
+                    trainingVector += " " + "cost_" + action + ":0.0";
+                } else {
+                    trainingVector += " " + "cost_" + action + ":1.0";
+                }
+            }
             //Arg ID
             for (int i = 0; i < arguments.size(); i++) {
                 int featureValue = 0;
                 if (i == argID) {
                     featureValue = 1;
                 }
-                trainingVector += " " + (featureNo++) + ":" + featureValue;
+                trainingVector += " " + "feature_" + (featureNo++) + ":" + featureValue;
             }
         }
         return trainingVector;
@@ -1600,24 +1638,10 @@ public class RoboCup {
                             while (!predictedWord.equals(RoboCup.TOKEN_END) && predictedWordsList.size() < 10000) {
                                 ArrayList<String> tempList = new ArrayList(predictedWordsList);
                                 tempList.add("@TOK@");
-                                String trainingVector = createWordTrainingVectorChoice(tempList, w, arg1toBeMentioned, arg2toBeMentioned);
+                                Instance trainingVector = RoboCup.createWordInstance(tempList, w, arg1toBeMentioned, arg2toBeMentioned);
 
-                                //System.out.println("TV " + trainingVector);
-                                if (!trainingVector.isEmpty()) {
-                                    TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
-                                    TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-
-                                    String[] details;
-                                    details = trainingVector.split(" ");
-
-                                    for (int j = 1; j < details.length; j++) {
-                                        String[] feature;
-                                        feature = details[j].split(":");
-
-                                        featureVector.put(feature[0], Double.parseDouble(feature[1]));
-                                    }
-
-                                    Prediction predict = classifierWords.predict(new Instance(featureVector, costs));
+                                if (trainingVector != null) {
+                                    Prediction predict = classifierWords.predict(trainingVector);
                                     predictedWord = predict.getLabel().trim();
                                     predictedWordsList.add(predictedWord);
 
@@ -1626,9 +1650,6 @@ public class RoboCup {
                                     } else if (predictedWord.equals(RoboCup.TOKEN_ARG2)) {
                                         arg2toBeMentioned = false;
                                     }
-
-                                    //System.out.println(trainingVector);
-                                    //System.out.println("T: " + nlWords[w] + " P: " + predict.getLabel());
                                 }
                                 w++;
                             }

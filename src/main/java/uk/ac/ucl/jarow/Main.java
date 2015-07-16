@@ -2,7 +2,7 @@
  2015, Gerasimos Lampouras
  Based on the implementation of AROW in python by Andreas Vlachos
  */
-package uk.ac.ucl.jdagger.jarow;
+package uk.ac.ucl.jarow;
 
 // Cost-sensitive multiclass classification with AROW
 

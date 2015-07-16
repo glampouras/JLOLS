@@ -1,4 +1,4 @@
-package uk.ac.ucl.jdagger.jarow;
+package uk.ac.ucl.jarow;
 
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TObjectDoubleHashMap;

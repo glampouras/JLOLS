@@ -1,4 +1,4 @@
-package uk.ac.ucl.jdagger.jarow;
+package uk.ac.ucl.jarow;
 
 // cost-sensitive multiclass classification with AROW
 
