@@ -35,6 +35,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
+import similarity_measures.Cosine;
 import similarity_measures.Levenshtein;
 import uk.ac.ucl.jdagger.JDAgger;
 
@@ -43,13 +44,17 @@ public class RoboCup {
     static Random r = new Random();
 
     static ArrayList<String> dictionary = new ArrayList<>();
+    static ArrayList<String> dictionaryBi = new ArrayList<>();
+    static ArrayList<String> dictionaryTri = new ArrayList<>();
+
     static ArrayList<String> argDictionary = new ArrayList<>();
     static HashMap<String, HashMap<String, Integer>> argDictionaryMap = new HashMap<>();
     static ArrayList<String> arguments = new ArrayList<>();
     static ArrayList<String> predicates = new ArrayList<>();
     static ArrayList<MeaningRepresentation> meaningReprs = new ArrayList<>();
 
-    static HashSet<ArrayList<String>> patterns = new HashSet<>();
+    static HashMap<String, HashSet<ArrayList<String>>> patterns = new HashMap<>();
+    static HashMap<MeaningRepresentation, ArrayList<String>> oneRefPatterns = new HashMap<>();
 
     final public static String TOKEN_END = "@end@";
     final public static String TOKEN_ARG1 = "@arg1@";
@@ -80,63 +85,148 @@ public class RoboCup {
     static ArrayList<Double> oneRefBLEUSmoothScores = new ArrayList<>();
 
     public static void main(String[] args) {
-        runTestWithJAROW();
+        boolean useDAgger = true;
+
+        /*System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "@arg1@ kicks to @arg1@ passes to @arg2@", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "@arg1@ kicks to passes to @arg2@", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "@arg1@ kicks to to @arg2@", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "@arg1@ kicks to @arg2@", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "@arg1@ passes to", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "@arg1@ passes passes", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "@arg1@ kicks to", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "@arg1@ kicks passes", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes", "@arg1@ passes passes", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes", "@arg1@ passes kicks", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to", "@arg1@ passes passes passes", 3, false));        
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to", "@arg1@ passes passes", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to", "@arg1@ passes kicks", 3, false));
+         System.out.println(Cosine.getNGramSimilarity("@arg1@ passes to @arg2@", "", 3, false));
+         System.exit(0);*/
+        runTestWithJAROW(useDAgger);
     }
 
-    public static void runTestWithJAROW() {
+    public static void runTestWithJAROW(boolean useDAgger) {
         File dataFolder = new File("robocup_data\\gold\\");
-        /*createLists(dataFolder, -1);
-         saveLists("robocup_data\\");
-         //readLists("robocup_data\\");        
-         createTrainingDatasets(new File("robocup_data\\gold\\"), "robocup_data\\goldTrainingData", -1);
-                
-         nlgTest("robocup_data\\");*/
 
+        createLists(dataFolder, -1);
+        initializeEvaluation();
         if (dataFolder.isDirectory()) {
-            for (int f = 0; f < dataFolder.listFiles().length; f++) {
-                File file = dataFolder.listFiles()[f];
-                createLists(dataFolder, f);
-                createTrainingDatasets(new File("robocup_data\\gold\\"), "robocup_data\\goldTrainingData", f);
+            for (String predicateStr : predicates) {
+                //if (predicateStr.startsWith("pass")) {
+                    for (int f = 0; f < dataFolder.listFiles().length; f++) {
+                        File file = dataFolder.listFiles()[f];
+                        createLists(dataFolder, f);
+                        createTrainingDatasets(new File("robocup_data\\gold\\"), "robocup_data\\goldTrainingData", f);
 
-                for (String predicateStr : predicates) {
-                    if (!NISTScoresPerPredicate.containsKey(predicateStr)) {
-                        NISTScoresPerPredicate.put(predicateStr, new ArrayList<>());
+                        genTest("robocup_data\\", file, f, predicateStr, useDAgger);
                     }
-                    if (!BLEUScoresPerPredicate.containsKey(predicateStr)) {
-                        BLEUScoresPerPredicate.put(predicateStr, new ArrayList<>());
-                    }
-                    if (!BLEUSmoothScoresPerPredicate.containsKey(predicateStr)) {
-                        BLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<>());
-                    }
-
-                    if (!unbiasedNISTScoresPerPredicate.containsKey(predicateStr)) {
-                        unbiasedNISTScoresPerPredicate.put(predicateStr, new ArrayList<>());
-                    }
-                    if (!unbiasedBLEUScoresPerPredicate.containsKey(predicateStr)) {
-                        unbiasedBLEUScoresPerPredicate.put(predicateStr, new ArrayList<>());
-                    }
-                    if (!unbiasedBLEUSmoothScoresPerPredicate.containsKey(predicateStr)) {
-                        unbiasedBLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<>());
-                    }
-
-                    if (!oneRefNISTScoresPerPredicate.containsKey(predicateStr)) {
-                        oneRefNISTScoresPerPredicate.put(predicateStr, new ArrayList<>());
-                    }
-                    if (!oneRefBLEUScoresPerPredicate.containsKey(predicateStr)) {
-                        oneRefBLEUScoresPerPredicate.put(predicateStr, new ArrayList<>());
-                    }
-                    if (!oneRefBLEUSmoothScoresPerPredicate.containsKey(predicateStr)) {
-                        oneRefBLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<>());
-                    }
-                }
-                for (String predicateStr : predicates) {
-                    //if (predicateStr.startsWith("playmode")) {
-                        genTest("robocup_data\\", file, f, predicateStr);
-                    //}
-                }
-                //genTest("robocup_data\\", file, f, "badpass");
+                    //System.exit(0);                    
+                    printEvaluation("robocup_data\\results", -1);
+                //}
             }
         }
+        printEvaluation("robocup_data\\results", -1);
+    }
+
+    public static void genTest(String modelPath, File testFile, int excludeFile, String predicateStr, boolean useDAgger) {
+        String line;
+        ArrayList<Instance> wordInstances = new ArrayList<>();
+        if ((new File("robocup_data\\goldTrainingData_words_" + predicateStr + "_excl" + excludeFile)).exists()) {
+            try (
+                    InputStream fis = new FileInputStream("robocup_data\\goldTrainingData_words_" + predicateStr + "_excl" + excludeFile);
+                    InputStreamReader isr = new InputStreamReader(fis, Charset.forName("UTF-8"));
+                    BufferedReader br = new BufferedReader(isr);) {
+                System.out.println("Reading the word data");
+                while ((line = br.readLine()) != null) {
+                    String[] details;
+                    details = line.split(" ");
+
+                    TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
+                    TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
+                    for (int i = 0; i < details.length; i++) {
+                        String[] feature;
+                        feature = details[i].split(":");
+
+                        if (feature[0].startsWith("feature_")) {
+                            featureVector.put(feature[0], Double.parseDouble(feature[1]));
+                        } else if (feature[0].startsWith("cost_")) {
+                            costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
+                        }
+                    }
+                    wordInstances.add(new Instance(featureVector, costs));
+                }
+            } catch (FileNotFoundException ex) {
+                Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
+                Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            }
+
+            if (useDAgger) {
+                //DAGGER USE
+                ArrayList<Action> availableActions = new ArrayList();
+                for (String word : dictionary) {
+                    availableActions.add(new Action(word));
+                }
+                HashMap<ActionSequence, Integer> referencePolicy = getReferencePolicy(new File("robocup_data\\gold\\"), "robocup_data\\goldTrainingData", excludeFile);
+
+                ArrayList<MeaningRepresentation> meaningReprsSubset = new ArrayList<>();
+                for (MeaningRepresentation m : meaningReprs) {
+                    if (m.getPredicate().equals(predicateStr)) {
+                        meaningReprsSubset.add(m);
+                    }
+                }
+                JDAgger dagger = new JDAgger();
+                System.out.println("Run dagger for property " + predicateStr + " while excluding file " + excludeFile);
+                JAROW classifierWords = dagger.runDAgger(predicateStr, wordInstances, meaningReprsSubset, availableActions, referencePolicy, oneRefPatterns, 5, 0.7);
+                evaluateGeneration(classifierWords, testFile, predicateStr);
+                
+            } else {
+                //NO DAGGER USE
+                JAROW classifierWords = new JAROW();
+                Collections.shuffle(wordInstances);
+                classifierWords.train(wordInstances, true, true, 10, 0.1, true);
+                //Double[] params = {0.01, 0.1, 1.0, 10.0, 100.0};
+                //classifierWords = JAROW.trainOpt(wordInstances, 10, params, 0.1, true, false);
+                evaluateGeneration(classifierWords, testFile, predicateStr);
+            }
+        }
+    }
+
+    public static void initializeEvaluation() {
+        for (String predicateStr : predicates) {
+            if (!NISTScoresPerPredicate.containsKey(predicateStr)) {
+                NISTScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+            if (!BLEUScoresPerPredicate.containsKey(predicateStr)) {
+                BLEUScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+            if (!BLEUSmoothScoresPerPredicate.containsKey(predicateStr)) {
+                BLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+
+            if (!unbiasedNISTScoresPerPredicate.containsKey(predicateStr)) {
+                unbiasedNISTScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+            if (!unbiasedBLEUScoresPerPredicate.containsKey(predicateStr)) {
+                unbiasedBLEUScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+            if (!unbiasedBLEUSmoothScoresPerPredicate.containsKey(predicateStr)) {
+                unbiasedBLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+
+            if (!oneRefNISTScoresPerPredicate.containsKey(predicateStr)) {
+                oneRefNISTScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+            if (!oneRefBLEUScoresPerPredicate.containsKey(predicateStr)) {
+                oneRefBLEUScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+            if (!oneRefBLEUSmoothScoresPerPredicate.containsKey(predicateStr)) {
+                oneRefBLEUSmoothScoresPerPredicate.put(predicateStr, new ArrayList<>());
+            }
+        }
+    }
+
+    public static void printEvaluation(String writeFolderPath, int epoch) {
         for (String predicateStr : predicates) {
             double avgNISTScores = 0.0;
             double avgBLEUScores = 0.0;
@@ -192,6 +282,33 @@ public class RoboCup {
             System.out.println("============================================================");
             System.out.println("============================================================");
             System.out.println("============================================================");
+
+            try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(writeFolderPath + "_evaluation_" + predicateStr + "_" + epoch), "utf-8"))) {
+                writer.write("============================================================" + "\n");
+                writer.write("============================================================" + "\n");
+                writer.write("============================================================" + "\n");
+                writer.write(predicateStr + " BATCH NIST SCORE:\t" + avgNISTScores + "\n");
+                writer.write(predicateStr + " BATCH BLEU SCORE:\t" + avgBLEUScores + "\n");
+                writer.write(predicateStr + " BATCH BLEU SMOOTH SCORE:\t" + avgBLEUSmoothScores + "\n");
+                writer.write("============================================================" + "\n");
+                writer.write(predicateStr + " UNBIASED BATCH NIST SCORE:\t" + avgUnbiasedNISTScores + "\n");
+                writer.write(predicateStr + " UNBIASED BATCH BLEU SCORE:\t" + avgUnbiasedBLEUScores + "\n");
+                writer.write(predicateStr + " UNBIASED BATCH BLEU SMOOTH SCORE:\t" + avgUnbiasedBLEUSmoothScores + "\n");
+                writer.write("============================================================" + "\n");
+                writer.write(predicateStr + " ONEREF BATCH NIST SCORE:\t" + avgOneRefNISTScores + "\n");
+                writer.write(predicateStr + " ONEREF BATCH BLEU SCORE:\t" + avgOneRefBLEUScores + "\n");
+                writer.write(predicateStr + " ONEREF BATCH BLEU SMOOTH SCORE:\t" + avgOneRefBLEUSmoothScores + "\n");
+                writer.write("============================================================" + "\n");
+                writer.write("============================================================" + "\n");
+                writer.write("============================================================" + "\n");
+                writer.close();
+            } catch (UnsupportedEncodingException ex) {
+                Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (FileNotFoundException ex) {
+                Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
+                Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            }
         }
         double avgNISTScores = 0.0;
         double avgBLEUScores = 0.0;
@@ -247,91 +364,33 @@ public class RoboCup {
         System.out.println("============================================================");
         System.out.println("============================================================");
         System.out.println("============================================================");
-    }
 
-    public static void genTest(String modelPath, File testFile, int excludeFile, String predicateStr) {
-        String line;
-        ArrayList<Instance> wordInstances = new ArrayList<>();
-        ArrayList<Instance> argInstances = new ArrayList<>();
-
-        try (
-                InputStream fis = new FileInputStream("robocup_data\\goldTrainingData_words_" + predicateStr + "_excl" + excludeFile);
-                InputStreamReader isr = new InputStreamReader(fis, Charset.forName("UTF-8"));
-                BufferedReader br = new BufferedReader(isr);) {
-            System.out.println("Reading the word data");
-            while ((line = br.readLine()) != null) {
-                String[] details;
-                details = line.split(" ");
-
-                TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
-                TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-                for (int i = 0; i < details.length; i++) {
-                    String[] feature;
-                    feature = details[i].split(":");
-
-                    if (feature[0].startsWith("feature_")) {
-                        featureVector.put(feature[0], Double.parseDouble(feature[1]));
-                    } else if (feature[0].startsWith("cost_")) {                        
-                        costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
-                    }
-                }
-                wordInstances.add(new Instance(featureVector, costs));
-                //System.out.println(instances.get(instances.size() - 1).getCosts());
-            }
+        try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(writeFolderPath + "_evaluation_batch_" + epoch), "utf-8"))) {
+            writer.write("============================================================" + "\n");
+            writer.write("============================================================" + "\n");
+            writer.write("============================================================" + "\n");
+            writer.write("BATCH NIST SCORE:\t" + avgNISTScores + "\n");
+            writer.write("BATCH BLEU SCORE:\t" + avgBLEUScores + "\n");
+            writer.write("BATCH BLEU SMOOTH SCORE:\t" + avgBLEUSmoothScores + "\n");
+            writer.write("============================================================" + "\n");
+            writer.write("UNBIASED BATCH NIST SCORE:\t" + avgUnbiasedNISTScores + "\n");
+            writer.write("UNBIASED BATCH BLEU SCORE:\t" + avgUnbiasedBLEUScores + "\n");
+            writer.write("UNBIASED BATCH BLEU SMOOTH SCORE:\t" + avgUnbiasedBLEUSmoothScores + "\n");
+            writer.write("============================================================" + "\n");
+            writer.write("ONEREF BATCH NIST SCORE:\t" + avgOneRefNISTScores + "\n");
+            writer.write("ONEREF BATCH BLEU SCORE:\t" + avgOneRefBLEUScores + "\n");
+            writer.write("ONEREF BATCH BLEU SMOOTH SCORE:\t" + avgOneRefBLEUSmoothScores + "\n");
+            writer.write("============================================================" + "\n");
+            writer.write("============================================================" + "\n");
+            writer.write("============================================================" + "\n");
+            writer.close();
+        } catch (UnsupportedEncodingException ex) {
+            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
         }
-        /*try (
-         InputStream fis = new FileInputStream("robocup_data\\goldTrainingData_args_pass_excl" + excludeFile);
-         InputStreamReader isr = new InputStreamReader(fis, Charset.forName("UTF-8"));
-         BufferedReader br = new BufferedReader(isr);) {            
-         System.out.println("Reading the arg data");
-         while ((line = br.readLine()) != null) {
-         String[] details;
-         details = line.split(" ");
-                
-         TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
-         TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-                
-         for (String word : argDictionary) {                    
-         costs.put(word, 1.0);
-         }
-         costs.put(argDictionary.get(Integer.parseInt(details[0])), 0.0);
-                
-         for (int i = 1; i < details.length; i++) {
-         String[] feature;
-         feature = details[i].split(":");
-                    
-         featureVector.put(feature[0], Double.parseDouble(feature[1]));
-         }
-         argInstances.add(new Instance(featureVector, costs));
-         //System.out.println(instances.get(instances.size() - 1).getCosts());
-         }
-         } catch (FileNotFoundException ex) {
-         Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-         } catch (IOException ex) {
-         Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-         }*/
-
-        //Collections.shuffle(argInstances);
-        //DAGGER USE
-        ArrayList<Action> availableActions = new ArrayList();
-        for (String word : dictionary) {
-            availableActions.add(new Action(word));
-        }
-        HashMap<ActionSequence, Integer> referencePolicy = getReferencePolicy(new File("robocup_data\\gold\\"), "robocup_data\\goldTrainingData", excludeFile);
-        JAROW classifierWords = JDAgger.runStochasticDAgger(wordInstances, meaningReprs, availableActions, referencePolicy, 5, 0.7);
-        evaluateGeneration(classifierWords, testFile, predicateStr);
-         
-        //NO DAGGER USE
-        /*JAROW classifierWords = new JAROW();
-        Collections.shuffle(wordInstances);
-        classifierWords.train(wordInstances, true, true, 10, 0.1, true);
-        //Double[] params = {0.01, 0.1, 1.0, 10.0, 100.0};
-        //classifierWords = JAROW.trainOpt(wordInstances, 10, params, 0.1, true, false);
-        evaluateGeneration(classifierWords, testFile, predicateStr);*/
     }
 
     public static void nlgTest(String modelPath, String predicateStr) {
@@ -356,17 +415,20 @@ public class RoboCup {
 
                     if (feature[0].startsWith("feature_")) {
                         featureVector.put(feature[0], Double.parseDouble(feature[1]));
-                    } else if (feature[0].startsWith("cost_")) {                        
+                    } else if (feature[0].startsWith("cost_")) {
                         costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
                     }
                 }
                 wordInstances.add(new Instance(featureVector, costs));
                 //System.out.println(instances.get(instances.size() - 1).getCosts());
+
             }
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Main.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Main.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
         try (
                 InputStream fis = new FileInputStream("robocup_data\\goldTrainingData_args_" + predicateStr);
@@ -376,7 +438,7 @@ public class RoboCup {
             while ((line = br.readLine()) != null) {
                 String[] details;
                 details = line.split(" ");
-                
+
                 TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
                 TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
                 for (int i = 0; i < details.length; i++) {
@@ -385,17 +447,20 @@ public class RoboCup {
 
                     if (feature[0].startsWith("feature_")) {
                         featureVector.put(feature[0], Double.parseDouble(feature[1]));
-                    } else if (feature[0].startsWith("cost_")) {                        
+                    } else if (feature[0].startsWith("cost_")) {
                         costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
                     }
                 }
                 argInstances.add(new Instance(featureVector, costs));
                 //System.out.println(instances.get(instances.size() - 1).getCosts());
+
             }
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Main.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Main.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
 
         Collections.shuffle(wordInstances);
@@ -416,7 +481,7 @@ public class RoboCup {
             while ((line = br.readLine()) != null) {
                 String[] details;
                 details = line.split(" ");
-                
+
                 TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
                 TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
                 for (int i = 0; i < details.length; i++) {
@@ -425,17 +490,20 @@ public class RoboCup {
 
                     if (feature[0].startsWith("feature_")) {
                         featureVector.put(feature[0], Double.parseDouble(feature[1]));
-                    } else if (feature[0].startsWith("cost_")) {                        
+                    } else if (feature[0].startsWith("cost_")) {
                         costs.put(feature[0].substring(5), Double.parseDouble(feature[1]));
                     }
                 }
                 instances.add(new Instance(featureVector, costs));
                 //System.out.println(instances.get(instances.size()).getCosts());
+
             }
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Main.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Main.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
 
         Collections.shuffle(instances);
@@ -491,7 +559,7 @@ public class RoboCup {
         argDictionaryMap = new HashMap<>();
         arguments = new ArrayList<>();
         predicates = new ArrayList<>();
-        patterns = new HashSet<>();
+        patterns = new HashMap<>();
         meaningReprs = new ArrayList<>();
 
         dictionary.add(RoboCup.TOKEN_END);
@@ -555,7 +623,7 @@ public class RoboCup {
                                             argDictionaryMap.put(arg, new HashMap<>());
                                         }
                                     }
-                                    meaningReprs.add(new MeaningRepresentation(predicate, arguments));
+                                    meaningReprs.add(new MeaningRepresentation(predicate, args));
                                 }
 
                                 NodeList nl = node.getElementsByTagName("nl");
@@ -596,8 +664,9 @@ public class RoboCup {
                                                 }
                                             }
                                         }
-                                        if (max >= 0.3)
+                                        if (max >= 0.3) {
                                             bestAlignments.put(bestAlignment[1], bestAlignment[0]);
+                                        }
                                     }
 
                                     String phrase = "";
@@ -655,8 +724,13 @@ public class RoboCup {
                                                 dictionary.add(word.trim());
                                             }
                                         }
-                                    };
-                                    patterns.add(nlWordsList);
+
+                                        oneRefPatterns.put(new MeaningRepresentation(predicate, args), nlWordsList);
+                                    }
+                                    if (!patterns.containsKey(predicate)) {
+                                        patterns.put(predicate, new HashSet<>());
+                                    }
+                                    patterns.get(predicate).add(nlWordsList);
                                 }
                             }
                         }
@@ -664,6 +738,42 @@ public class RoboCup {
                 }
             }
         }
+
+        dictionaryBi = new ArrayList<>();
+        /*dictionaryBi.add("@@|@@");
+         for (String word1 : dictionary) {
+         for (String word2 : dictionary) {
+         if (!word1.equals(RoboCup.TOKEN_END)) {
+         if (!dictionaryBi.contains(word1 + "|" + word2)) {
+         dictionaryBi.add(word1 + "|" + word2);
+         }
+         }
+         }
+         if (!dictionaryBi.contains("@@|" + word1)) {
+         dictionaryBi.add("@@|" + word1);
+         }
+         }*/
+
+        dictionaryTri = new ArrayList<>();
+        /*dictionaryTri.add("@@|@@|@@");
+         for (String word1 : dictionary) {
+         for (String word2 : dictionary) {
+         System.out.println(word2);
+         for (String word3 : dictionary) {
+         if (!word1.equals(RoboCup.TOKEN_END) && !word2.equals(RoboCup.TOKEN_END)) {
+         if (!dictionaryTri.contains(word1 + "|" + word2 + "|" + word3)) {
+         dictionaryTri.add(word1 + "|" + word2 + "|" + word3);
+         }
+         }
+         }
+         if (!dictionaryTri.contains("@@|" + word1 + "|" + word2)) {
+         dictionaryTri.add("@@|" + word1 + "|" + word2);
+         }
+         }
+         if (!dictionaryTri.contains("@@|" + "@@|" + word1)) {
+         dictionaryTri.add("@@|" + "@@|" + word1);
+         }
+         }*/
     }
 
     public static void saveLists(String writeFolderPath) {
@@ -672,36 +782,48 @@ public class RoboCup {
                 writer.write(i + ":" + dictionary.get(i) + "\n");
             }
             writer.close();
+
         } catch (UnsupportedEncodingException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
         try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(writeFolderPath + "_arguments"), "utf-8"))) {
             for (int i = 0; i < arguments.size(); i++) {
                 writer.write(i + ":" + arguments.get(i) + "\n");
             }
             writer.close();
+
         } catch (UnsupportedEncodingException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
         try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(writeFolderPath + "_predicates"), "utf-8"))) {
             for (int i = 0; i < predicates.size(); i++) {
                 writer.write(i + ":" + predicates.get(i) + "\n");
             }
             writer.close();
+
         } catch (UnsupportedEncodingException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -731,12 +853,16 @@ public class RoboCup {
                 dictionary.set(Integer.parseInt(details[0]), details[1]);
             }
             reader.close();
+
         } catch (UnsupportedEncodingException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
         try (
                 InputStream fis = new FileInputStream(readFolderPath + "_arguments");
@@ -762,12 +888,16 @@ public class RoboCup {
                 arguments.set(Integer.parseInt(details[0]), details[1]);
             }
             reader.close();
+
         } catch (UnsupportedEncodingException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
         try (
                 InputStream fis = new FileInputStream(readFolderPath + "_predicates");
@@ -793,12 +923,16 @@ public class RoboCup {
                 predicates.set(Integer.parseInt(details[0]), details[1]);
             }
             reader.close();
+
         } catch (UnsupportedEncodingException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(RoboCup.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -914,8 +1048,9 @@ public class RoboCup {
                                                     }
                                                 }
                                             }
-                                            if (max >= 0.3)
+                                            if (max >= 0.3) {
                                                 bestAlignments.put(bestAlignment[1], bestAlignment[0]);
+                                            }
                                         }
 
                                         String phrase = "";
@@ -1032,24 +1167,32 @@ public class RoboCup {
                         writer.write(trainingVector + "\n");
                     }
                     writer.close();
+
                 } catch (UnsupportedEncodingException ex) {
-                    Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+                    Logger.getLogger(RoboCup.class
+                            .getName()).log(Level.SEVERE, null, ex);
                 } catch (FileNotFoundException ex) {
-                    Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+                    Logger.getLogger(RoboCup.class
+                            .getName()).log(Level.SEVERE, null, ex);
                 } catch (IOException ex) {
-                    Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+                    Logger.getLogger(RoboCup.class
+                            .getName()).log(Level.SEVERE, null, ex);
                 }
                 try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(argsPath), "utf-8"))) {
                     for (String trainingVector : predicateArgTrainingData.get(predicate)) {
                         writer.write(trainingVector + "\n");
                     }
                     writer.close();
+
                 } catch (UnsupportedEncodingException ex) {
-                    Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+                    Logger.getLogger(RoboCup.class
+                            .getName()).log(Level.SEVERE, null, ex);
                 } catch (FileNotFoundException ex) {
-                    Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+                    Logger.getLogger(RoboCup.class
+                            .getName()).log(Level.SEVERE, null, ex);
                 } catch (IOException ex) {
-                    Logger.getLogger(RoboCup.class.getName()).log(Level.SEVERE, null, ex);
+                    Logger.getLogger(RoboCup.class
+                            .getName()).log(Level.SEVERE, null, ex);
                 }
             }
         }
@@ -1169,8 +1312,9 @@ public class RoboCup {
                                                     }
                                                 }
                                             }
-                                            if (max >= 0.3)
+                                            if (max >= 0.3) {
                                                 bestAlignments.put(bestAlignment[1], bestAlignment[0]);
+                                            }
                                         }
 
                                         String phrase = "";
@@ -1231,9 +1375,9 @@ public class RoboCup {
 
                                         for (String arguement : args) {
                                             /*String argTrainingVector1 = createArgTrainingVector(arguments.indexOf(arguement), bestPhraseAlignments.get(arguement));
-                                            if (!argTrainingVector1.isEmpty()) {
-                                                predicateArgTrainingData.get(predicate).add(argTrainingVector1);
-                                            }*/
+                                             if (!argTrainingVector1.isEmpty()) {
+                                             predicateArgTrainingData.get(predicate).add(argTrainingVector1);
+                                             }*/
                                             if (argDictionaryMap.get(arguement).containsKey(bestPhraseAlignments.get(arguement))) {
                                                 argDictionaryMap.get(arguement).put(bestPhraseAlignments.get(arguement), argDictionaryMap.get(arguement).get(bestPhraseAlignments.get(arguement)) + 1);
                                             } else {
@@ -1255,7 +1399,6 @@ public class RoboCup {
         String trainingVector = "";
 
         String bestAction = nlWords.get(w).toLowerCase().trim();
-        int featureNo = 1;
         if (!bestAction.isEmpty()) {
             //COSTS
             for (String action : dictionary) {
@@ -1265,7 +1408,7 @@ public class RoboCup {
                     trainingVector += " " + "cost_" + action + ":1.0";
                 }
             }
-            
+
             //FEATURES
             //Arg1 ID
             /*for (int i = 0; i < arguments.size(); i++) {
@@ -1295,35 +1438,35 @@ public class RoboCup {
                     previousWord = nlWords.get(w - j).trim();
                 }
                 for (int i = 0; i < dictionary.size(); i++) {
-                    int featureValue = 0;
+                    double featureValue = 0.0;
                     if (!previousWord.isEmpty() && dictionary.get(i).equals(previousWord)) {
-                        featureValue = 1;
+                        featureValue = 1.0;
                     }
-                    trainingVector += " " + "feature_" + (featureNo++) + ":" + featureValue;
+                    trainingVector += " " + "feature_" + j + "_" + dictionary.get(i) + ":" + featureValue;
                 }
                 if (previousWord.isEmpty()) {
-                    trainingVector += " " + "feature_" + (featureNo++) + ":1";
+                    trainingVector += " " + "feature_" + j + "_@@" + ":1.0";
                 } else {
-                    trainingVector += " " + "feature_" + (featureNo++) + ":0";
+                    trainingVector += " " + "feature_" + j + "_@@" + ":0.0";
                 }
             }
             //Word Positions
             //trainingVector += " " + "feature_" + (featureNo++) + ":" + w/20;
             //If arguments have already been generated or not
             if (arg1toBeMentioned) {
-                trainingVector += " " + "feature_" + (featureNo++) + ":1";
+                trainingVector += " " + "feature_arg1m" + ":1.0";
             } else {
-                trainingVector += " " + "feature_" + (featureNo++) + ":0";
+                trainingVector += " " + "feature_arg1m" + ":0.0";
             }
             if (arg2toBeMentioned) {
-                trainingVector += " " + "feature_" + (featureNo++) + ":1";
+                trainingVector += " " + "feature_arg2m" + ":1.0";
             } else {
-                trainingVector += " " + "feature_" + (featureNo++) + ":0";
+                trainingVector += " " + "feature_arg2m" + ":0.0";
             }
         }
-        return trainingVector;
+        return trainingVector.trim();
     }
-    
+
     public static Instance createWordInstance(ArrayList<String> nlWords, int w, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
         TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
         String bestAction = nlWords.get(w).toLowerCase().trim();
@@ -1339,7 +1482,7 @@ public class RoboCup {
         }
         return createWordInstance(nlWords, w, costs, arg1toBeMentioned, arg2toBeMentioned);
     }
-    
+
     public static Instance createWordInstance(ArrayList<String> nlWords, int w, double cost, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
         TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
         String bestAction = nlWords.get(w).toLowerCase().trim();
@@ -1347,7 +1490,7 @@ public class RoboCup {
             //COSTS
             for (String action : dictionary) {
                 if (action.equals(bestAction)) {
-                    costs.put(action, cost);
+                    costs.put(action, 1.0 - cost);
                 } else {
                     costs.put(action, 1.0);
                 }
@@ -1355,12 +1498,12 @@ public class RoboCup {
         }
         return createWordInstance(nlWords, w, costs, arg1toBeMentioned, arg2toBeMentioned);
     }
-    
+
     public static Instance createWordInstance(ArrayList<String> nlWords, int w, TObjectDoubleHashMap<String> costs, boolean arg1toBeMentioned, boolean arg2toBeMentioned) {
         TObjectDoubleHashMap<String> features = new TObjectDoubleHashMap<>();
 
-        int featureNo = 0;            
         //Previous word features
+        //System.out.println("£££ "  + nlWords);
         for (int j = 1; j <= 5; j++) {
             /*int previousWordID = -1;
              if (w - j >= 0) {
@@ -1372,31 +1515,78 @@ public class RoboCup {
                 previousWord = nlWords.get(w - j).trim();
             }
             for (int i = 0; i < dictionary.size(); i++) {
-                int featureValue = 0;
+                double featureValue = 0.0;
                 if (!previousWord.isEmpty() && dictionary.get(i).equals(previousWord)) {
-                    featureValue = 1;
+                    featureValue = 1.0;
                 }
-                features.put("feature_" + (featureNo++), featureValue);
+                features.put("feature_" + j + "_" + dictionary.get(i), featureValue);
             }
             if (previousWord.isEmpty()) {
-                features.put("feature_" + (featureNo++), 1.0);
+                features.put("feature_" + j + "_@@", 1.0);
             } else {
-                features.put("feature_" + (featureNo++), 0.0);
+                features.put("feature_" + j + "_@@", 0.0);
             }
         }
+        //Word N-Grams            
+        String prevWord = "@@";
+        if (w - 1 >= 0) {
+            prevWord = nlWords.get(w - 1).trim();
+        }
+        String prevPrevWord = "@@";
+        if (w - 2 >= 0) {
+            prevPrevWord = nlWords.get(w - 2).trim();
+        }
+        String prevPrevPrevWord = "@@";
+        if (w - 3 >= 0) {
+            prevPrevPrevWord = nlWords.get(w - 3).trim();
+        }
+
+        String prevBigram = prevPrevWord + "|" + prevWord;
+        String prevTrigram = prevPrevPrevWord + "|" + prevPrevWord + "|" + prevWord;
+        for (String bigram : dictionaryBi) {
+            double featureValue = 0.0;
+
+            if (prevBigram.equals(bigram)) {
+                featureValue = 1.0;
+            }
+            features.put("feature_bigram_" + bigram, featureValue);
+        }
+        for (String trigram : dictionaryTri) {
+            double featureValue = 0.0;
+
+            if (prevTrigram.equals(trigram)) {
+                featureValue = 1.0;
+            }
+            features.put("feature_trigram_" + trigram, featureValue);
+        }
+
         //Word Positions
         //trainingVector += " " + "feature_" + (featureNo++) + ":" + w/20;
         //If arguments have already been generated or not
         if (arg1toBeMentioned) {
-            features.put("feature_" + (featureNo++), 1.0);
+            features.put("feature_arg1m", 1.0);
         } else {
-            features.put("feature_" + (featureNo++), 0.0);
+            features.put("feature_arg1m", 0.0);
         }
         if (arg2toBeMentioned) {
-            features.put("feature_" + (featureNo++), 1.0);
+            features.put("feature_arg2m", 1.0);
         } else {
-            features.put("feature_" + (featureNo++), 0.0);
+            features.put("feature_arg2m", 0.0);
         }
+        /*if (w == 12) {
+            System.out.println();
+            for (String f : features.keySet()) {
+                if (features.get(f) == 1.0) {
+                    System.out.print(f + "=" + features.get(f) + " , ");
+                }
+            }
+            System.out.println();
+            for (String c : costs.keySet()) {
+                System.out.print(c + "=" + costs.get(c) + " , ");
+            }
+            System.out.println();
+        }*/
+        //System.exit(0);
         return new Instance(features, costs);
     }
 
@@ -1500,6 +1690,7 @@ public class RoboCup {
         NISTTokenizer.lowercase(true);
         NISTTokenizer.normalize(true);
 
+        System.out.println("Evaluate " + predicateStr);
         ArrayList<String> mrNodes = new ArrayList<>();
         HashMap<String, ArrayList<Sequence<IString>>> references = new HashMap<>();
         HashMap<String, ArrayList<String>> strReferences = new HashMap<>();
@@ -1767,10 +1958,10 @@ public class RoboCup {
 
                             //SimpleSequence<IString> seq = new SimpleSequence<>(seqList);                            
                             //generations.add(seq);
-                            Double unbiasedBLEUScore = BLEUMetric.computeLocalSmoothScore(predictedStringWithArgs, createUnbiasedReferenceList(arg1name, arg2name), 4);
+                            Double unbiasedBLEUScore = BLEUMetric.computeLocalSmoothScore(predictedStringWithArgs, createUnbiasedReferenceList(arg1name, arg2name, predicate), 4);
                             //totalUnbiasedBLEU += unbiasedBLEUScore;
 
-                            unbiasedFinalReferences.add(createUnbiasedReferenceListSeq(arg1name, arg2name));
+                            unbiasedFinalReferences.add(createUnbiasedReferenceListSeq(arg1name, arg2name, predicate));
 
                             ArrayList<Sequence<IString>> oneRef = new ArrayList<>();
                             String[] nlWords = ((Element) nl.item(0)).getFirstChild().getNodeValue().toLowerCase().trim().replaceAll("\\'", " \\'").replaceAll("[\\p{Punct}&&[^\\'@]]", "").toLowerCase().split(" ");
@@ -1809,10 +2000,6 @@ public class RoboCup {
                 if (generations.size() > 0) {
                     System.out.println("PREDICATE:\t" + predicateStr);
 
-                    System.out.println(generations);
-                    System.out.println("==============");
-                    System.out.println(unbiasedFinalReferences);
-                    System.out.println("==============");
                     Double nistScore = NIST.score(generations);
                     Double bleuScore = BLEU.score(generations);
                     Double bleuSmoothScore = BLEUsmooth.score(generations);
@@ -1908,9 +2095,9 @@ public class RoboCup {
         }
     }
 
-    public static ArrayList<String> createUnbiasedReferenceList() {
+    public static ArrayList<String> createUnbiasedReferenceList(String predicate) {
         ArrayList<String> references = new ArrayList<>();
-        for (ArrayList<String> pattern : patterns) {
+        for (ArrayList<String> pattern : patterns.get(predicate)) {
             String reference = "";
             for (String word : pattern) {
                 reference += word + " ";
@@ -1920,9 +2107,9 @@ public class RoboCup {
         return references;
     }
 
-    public static ArrayList<String> createUnbiasedReferenceList(String arg1word, String arg2word) {
+    public static ArrayList<String> createUnbiasedReferenceList(String arg1word, String arg2word, String predicate) {
         ArrayList<String> references = new ArrayList<>();
-        for (ArrayList<String> pattern : patterns) {
+        for (ArrayList<String> pattern : patterns.get(predicate)) {
             String reference = "";
             for (String word : pattern) {
                 if (word.equals(RoboCup.TOKEN_ARG1)) {
@@ -1938,9 +2125,9 @@ public class RoboCup {
         return references;
     }
 
-    public static ArrayList<Sequence<IString>> createUnbiasedReferenceListSeq(String arg1word, String arg2word) {
+    public static ArrayList<Sequence<IString>> createUnbiasedReferenceListSeq(String arg1word, String arg2word, String predicate) {
         ArrayList<Sequence<IString>> references = new ArrayList<>();
-        for (ArrayList<String> pattern : patterns) {
+        for (ArrayList<String> pattern : patterns.get(predicate)) {
             String reference = "";
             for (String word : pattern) {
                 if (word.equals(RoboCup.TOKEN_ARG1)) {

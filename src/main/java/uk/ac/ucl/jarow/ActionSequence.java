@@ -1,9 +1,10 @@
 package uk.ac.ucl.jarow;
 
 import java.util.ArrayList;
+import java.util.Objects;
 import similarity_measures.Levenshtein;
 
-public class ActionSequence {
+public class ActionSequence implements Comparable{
     private ArrayList<Action> sequence;
     private double cost = 0.0;
     
@@ -27,9 +28,9 @@ public class ActionSequence {
         this.cost = as.getCost();
     }
     
-    public ActionSequence(ArrayList<Action> sequence, ArrayList<String> unbiasedRefList) {
+    public ActionSequence(ArrayList<Action> sequence, ActionSequence ref) {
         this.sequence = new ArrayList<>(sequence);
-        this.cost = calculateDistance(getSequenceToString(), unbiasedRefList);
+        this.cost = Levenshtein.getNormDistance(getSequenceToString(), ref.getSequenceToString());
     }    
 
     public ArrayList<Action> getSequence() {
@@ -45,8 +46,8 @@ public class ActionSequence {
         return cost;
     }
     
-    public void recalculateCost(ArrayList<String> unbiasedRefList) {
-        this.cost = calculateDistance(getSequenceToString(), unbiasedRefList);
+    public void recalculateCost(ActionSequence ref) {
+        this.cost = Levenshtein.getNormDistance(getSequenceToString(), ref.getSequenceToString());
     }
     
     final public String getSequenceToString() {
@@ -74,20 +75,44 @@ public class ActionSequence {
             return false;
         }
         final ActionSequence other = (ActionSequence) obj;
-        if (!this.getSequenceToString().equals(other.getSequenceToString())) {
+        if (!this.getSequence().toString().equals(other.getSequence().toString())) {
             return false;
         }
         return true;
     }
+
+    public void setCost(double cost) {
+        this.cost = cost;
+    }
     
     public static double calculateDistance(String sequenceString, ArrayList<String> unbiasedRefList) {
-        double maxScore = 0.0;
+        double minScore = 1000000000000.0;
+        String minRef = "";
         for (String ref : unbiasedRefList) {
-            double score = Levenshtein.getDistance(sequenceString, ref);
-            if (score > maxScore) {
-                maxScore = score;
+            double score = Levenshtein.getNormDistance(sequenceString, ref);
+            if (score < minScore) {
+                minRef = ref;
+                minScore = score;
             }
         }
-        return maxScore;
+        System.out.println("MINREF " + minRef + " > " + minScore);
+        return minScore;
+    }
+
+    public int compareTo(Object o) {
+        if (o == null) {
+            return -1;
+        }
+        if (!getClass().equals(o.getClass())) {
+            return -1;
+        }
+        final ActionSequence other = (ActionSequence) o;
+        if (this.getSequence().size() < other.getSequence().size()) {
+            return -1;
+        }
+        if (this.getSequence().size() > other.getSequence().size()) {
+            return 1;
+        }
+        return 0;
     }
 }
