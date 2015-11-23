@@ -1,6 +1,7 @@
 package uk.ac.ucl.jarow;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Objects;
 import similarity_measures.Levenshtein;
 
@@ -15,7 +16,7 @@ public class ActionSequence implements Comparable{
     public ActionSequence(ArrayList<Action> sequence, double cost) {
         this.sequence = new ArrayList<>();
         for (Action a : sequence) {
-            this.sequence.add(new Action(a.getDecision()));
+            this.sequence.add(new Action(a.getWord(), a.getAttribute()));
         }
         this.cost = cost;
     }
@@ -23,14 +24,29 @@ public class ActionSequence implements Comparable{
     public ActionSequence(ActionSequence as) {
         this.sequence = new ArrayList<>();
         for (Action a : as.getSequence()) {
-            this.sequence.add(new Action(a.getDecision()));
+            this.sequence.add(new Action(a.getWord(), a.getAttribute()));
         }
         this.cost = as.getCost();
     }
     
     public ActionSequence(ArrayList<Action> sequence, ActionSequence ref) {
         this.sequence = new ArrayList<>(sequence);
-        this.cost = Levenshtein.getNormDistance(getSequenceToString(), ref.getSequenceToString());
+        this.cost = Levenshtein.getNormDistance(getWordSequenceToString(), ref.getWordSequenceToString());
+    }       
+    
+    
+    public ActionSequence(ArrayList<Action> sequence, HashSet<ActionSequence> refs) {
+        this.sequence = new ArrayList<>(sequence);
+        
+        double min = Double.POSITIVE_INFINITY;
+        for (ActionSequence ref : refs) {
+            double c = Levenshtein.getNormDistance(getWordSequenceToString(), ref.getWordSequenceToString());
+            if (c < min) {
+                min = c;
+            }
+        }
+        
+        this.cost = min;
     }    
 
     public ArrayList<Action> getSequence() {
@@ -38,7 +54,7 @@ public class ActionSequence implements Comparable{
     }
     
     public void modifyAndShortenSequence(int index, String decision) {        
-        this.sequence.get(index).setDecision(decision);
+        this.sequence.get(index).setWord(decision);
         this.sequence = new ArrayList(this.sequence.subList(0, index + 1));
     }
 
@@ -47,22 +63,44 @@ public class ActionSequence implements Comparable{
     }
     
     public void recalculateCost(ActionSequence ref) {
-        this.cost = Levenshtein.getNormDistance(getSequenceToString(), ref.getSequenceToString());
+        this.cost = Levenshtein.getNormDistance(getWordSequenceToString(), ref.getWordSequenceToString());
     }
     
-    final public String getSequenceToString() {
-        String s = "";
-        for (Action act : sequence) {
-            if (!act.getDecision().equals(RoboCup.TOKEN_END)) {
-                s += act.getDecision() + " ";
+    public void recalculateCost(HashSet<ActionSequence> refs) {        
+        double min = Double.POSITIVE_INFINITY;
+        for (ActionSequence ref : refs) {
+            double c = Levenshtein.getNormDistance(getWordSequenceToString().toLowerCase(), ref.getWordSequenceToString().toLowerCase());
+            if (c < min) {
+                min = c;
             }
         }
-        return s.trim();
+        
+        this.cost = min;
+    }    
+    
+    final public String getWordSequenceToString() {
+        String w = "";
+        for (Action act : sequence) {
+            if (!act.getWord().equals(RoboCup.TOKEN_END)) {
+                w += act.getWord() + " ";
+            }
+        }
+        return w.trim();
+    }
+    
+    final public String getAttributeSequenceToString() {
+        String a = "";
+        for (Action act : sequence) {
+            if (!act.getWord().equals(RoboCup.TOKEN_END)) {
+                a += act.getAttribute()+ " ";
+            }
+        }
+        return a.trim();
     }
 
     @Override
     public int hashCode() {
-        int hash = this.getSequenceToString().hashCode();
+        int hash = this.getWordSequenceToString().hashCode();
         return hash;
     }
 

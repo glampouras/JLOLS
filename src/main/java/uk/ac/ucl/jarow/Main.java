@@ -24,7 +24,7 @@ public class Main {
 
     final static String filename = "C:\\Research\\Projects\\DIRIGENT\\Code\\JAROW\\news20.binary";
 
-    public static void main(String[] args) {                
+    public static void main(String[] args) {
         String line;
         ArrayList<Instance> instances = new ArrayList<>();
         try (
@@ -75,7 +75,7 @@ public class Main {
 
         // the last parameter can be set to True if probabilities are needed.
         Double[] params = {0.01, 0.1, 1.0, 10.0, 100.0};
-        JAROW classifier_p = JAROW.trainOpt(trainingInstances, 10, params, 0.1, true, false);
+        JAROW classifier_p = JAROW.trainOpt(trainingInstances, 10, params, 0.1, true, false, 0);
 
         Double cost = classifier_p.batchPredict(testingInstances);
         Double avgCost = cost/(double)testingInstances.size();

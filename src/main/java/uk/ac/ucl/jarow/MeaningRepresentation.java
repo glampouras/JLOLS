@@ -1,13 +1,16 @@
 package uk.ac.ucl.jarow;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Objects;
+import static uk.ac.ucl.jarow.Bagel.abstractDatasetInstances;
 
 public class MeaningRepresentation {
     private String predicate;
-    private ArrayList<String> arguments;
+    private HashMap<String, HashSet<String>> arguments;
 
-    public MeaningRepresentation(String predicate, ArrayList<String> arguments) {
+    public MeaningRepresentation(String predicate, HashMap<String, HashSet<String>> arguments) {
         this.predicate = predicate;
         this.arguments = arguments;
     }
@@ -16,7 +19,7 @@ public class MeaningRepresentation {
         return predicate;
     }
 
-    public ArrayList<String> getArguments() {
+    public HashMap<String, HashSet<String>> getAttributes() {
         return arguments;
     }
 
@@ -40,13 +43,8 @@ public class MeaningRepresentation {
         if (!Objects.equals(this.predicate, other.predicate)) {
             return false;
         }
-        if (this.arguments.size() != other.arguments.size()) {
+        if (!this.arguments.equals(other.arguments)) {
             return false;
-        }
-        for (int i = 0; i < this.arguments.size(); i++) {
-            if (!this.arguments.get(i).equals(other.arguments.get(i))) {
-                return false;
-            }
         }
         return true;
     }
