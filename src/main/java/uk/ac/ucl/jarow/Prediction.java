@@ -21,7 +21,7 @@ public class Prediction {
         this.entropy = 0.0;
     }
 
-    public TObjectDoubleHashMap<String> getLabel2score() {
+    public TObjectDoubleHashMap<String> getLabel2Score() {
         return label2score;
     }
 

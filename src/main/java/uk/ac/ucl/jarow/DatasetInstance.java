@@ -16,62 +16,38 @@ import java.util.HashSet;
 public class DatasetInstance {
     private MeaningRepresentation MR;
     
-    HashSet<ArrayList<String>> mentionedValueSequences;
-    HashSet<ArrayList<String>> mentionedAttributeSequences;
+    HashMap<ArrayList<Action>, ArrayList<String>> mentionedValueSequences;
+    HashMap<ArrayList<Action>, ArrayList<String>> mentionedAttributeSequences;
     
     HashSet<ArrayList<Action>> realizations;
 
     public DatasetInstance(MeaningRepresentation MR, ArrayList<String> mentionedValueSequence, ArrayList<String> mentionedAttributeSequence, ArrayList<Action> realization) {
         this.MR = MR;
-        this.mentionedValueSequences = new HashSet<>();
-        this.mentionedValueSequences.add(mentionedValueSequence);
+        this.mentionedValueSequences = new HashMap<>();
+        this.mentionedValueSequences.put(realization, mentionedValueSequence);
         
-        this.mentionedAttributeSequences = new HashSet<>();
-        this.mentionedAttributeSequences.add(mentionedAttributeSequence);
+        this.mentionedAttributeSequences = new HashMap<>();
+        this.mentionedAttributeSequences.put(realization, mentionedAttributeSequence);
         
         this.realizations = new HashSet<>();
         this.realizations.add(realization);
     }   
-    
-    public DatasetInstance(MeaningRepresentation MR, ArrayList<String> mentionedValueSequence, ArrayList<String> mentionedAttributeSequence, HashSet<ArrayList<Action>> realizations) {
-        this.MR = MR;
-        this.mentionedValueSequences = new HashSet<>();
-        this.mentionedValueSequences.add(mentionedValueSequence);
         
-        this.mentionedAttributeSequences = new HashSet<>();
-        this.mentionedAttributeSequences.add(mentionedAttributeSequence);
-        
-        this.realizations = new HashSet<>();
-        this.realizations.addAll(realizations);
-    }       
-    
-    public void mergeDatasetInstance(DatasetInstance DI) {
-        this.mentionedValueSequences.addAll(DI.getMentionedValueSequences());
-        this.mentionedAttributeSequences.addAll(DI.getMentionedAttributeSequences());
-        this.realizations.addAll(DI.getRealizations());
-    }
-    
     public void mergeDatasetInstance(ArrayList<String> mentionedValueSequence, ArrayList<String> mentionedAttributeSequence, ArrayList<Action> realization) {
-        this.mentionedValueSequences.add(mentionedValueSequence);
-        this.mentionedAttributeSequences.add(mentionedAttributeSequence);
         this.realizations.add(realization);
-    }
-    
-    public void mergeDatasetInstance(ArrayList<String> mentionedValueSequence, ArrayList<String> mentionedAttributeSequence, HashSet<ArrayList<Action>> realizations) {
-        this.mentionedValueSequences.add(mentionedValueSequence);
-        this.mentionedAttributeSequences.add(mentionedAttributeSequence);
-        this.realizations.addAll(realizations);
+        this.mentionedValueSequences.put(realization, mentionedValueSequence);
+        this.mentionedAttributeSequences.put(realization, mentionedAttributeSequence);
     }
 
     public MeaningRepresentation getMeaningRepresentation() {
         return MR;
     }
 
-    public HashSet<ArrayList<String>> getMentionedValueSequences() {
+    public HashMap<ArrayList<Action>, ArrayList<String>> getMentionedValueSequences() {
         return mentionedValueSequences;
     }
 
-    public HashSet<ArrayList<String>> getMentionedAttributeSequences() {
+    public HashMap<ArrayList<Action>, ArrayList<String>> getMentionedAttributeSequences() {
         return mentionedAttributeSequences;
     }
 

@@ -256,7 +256,7 @@ public class JDAgger {
                 //System.out.println("====================================");
             }
             Collections.shuffle(newTrainingWordInstances);
-            classifierWords.trainAdditional(newTrainingWordInstances, true, true, 10, 0.1, true);
+            classifierWords.trainAdditional(newTrainingWordInstances, true, true, 10, true);
         }
         return classifierWords;
     }
@@ -314,7 +314,7 @@ public class JDAgger {
 
                 //UPDATE CLASSIFIER
                 Collections.shuffle(newTrainingInstances);
-                classifierWords.trainAdditional(newTrainingInstances, true, true, 10, 0.1, true);
+                classifierWords.trainAdditional(newTrainingInstances, true, true, 10, true);
             }
         }
 
