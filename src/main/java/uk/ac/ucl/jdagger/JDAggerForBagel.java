@@ -40,99 +40,99 @@ public class JDAggerForBagel {
 
     public JDAggerForBagel() {
     }
-    public static Random r = new Random();
+    public static Random r = new Random(113);
     public static HashMap<ActionSequence, ActionSequence> rollOutCache = new HashMap<>();
 
     /*public JAROW runVDAggerForWords(String predicate, ArrayList<DatasetInstance> trainingDatasetInstances, ArrayList<Action> availableActions, int epochs, double beta) {
-     JAROW classifierWords = null;//trainClassifier(trainingWordInstances);
-     ArrayList<Instance> newTrainingInstances = new ArrayList();
-     for (int i = 1; i <= epochs; i++) {
-     ep = i;
-     rollOutCache = new HashMap<>();
-     System.out.println("Starting epoch " + i);
-     long startTime = System.currentTimeMillis();
+    JAROW classifierWords = null;//trainClassifier(trainingWordInstances);
+    ArrayList<Instance> newTrainingInstances = new ArrayList();
+    for (int i = 1; i <= epochs; i++) {
+    ep = i;
+    rollOutCache = new HashMap<>();
+    System.out.println("Starting epoch " + i);
+    long startTime = System.currentTimeMillis();
     
-     double p = Math.pow(1.0 - beta, (double) i - 1);
-     System.out.println("p = " + p);
+    double p = Math.pow(1.0 - beta, (double) i - 1);
+    System.out.println("p = " + p);
     
-     //ArrayList<Instance> newTrainingWordInstances = new ArrayList();
-     //CHANGE
-     for (DatasetInstance di : trainingDatasetInstances) {
-     for (ArrayList<String> realization : di.getRealizationsToAlignments().keySet()) {
-     ArrayList<String> alignment = di.getRealizationsToAlignments().get(realization);
-     ArrayList<Action> as = new ArrayList<>();
-     for (String s : realization) {
-     as.add(new Action(s));
-     }
-     as.add(new Action(Bagel.TOKEN_END));
-     ActionSequence ref = new ActionSequence(as, 0.0);
+    //ArrayList<Instance> newTrainingWordInstances = new ArrayList();
+    //CHANGE
+    for (DatasetInstance di : trainingDatasetInstances) {
+    for (ArrayList<String> realization : di.getRealizationsToAlignments().keySet()) {
+    ArrayList<String> alignment = di.getRealizationsToAlignments().get(realization);
+    ArrayList<Action> as = new ArrayList<>();
+    for (String s : realization) {
+    as.add(new Action(s));
+    }
+    as.add(new Action(Bagel.TOKEN_END));
+    ActionSequence ref = new ActionSequence(as, 0.0);
     
-     //ROLL-IN
-     double v = r.nextDouble();
-     boolean useReferenceRollIn = false;
-     if (v <= p) {
-     useReferenceRollIn = true;
-     }
-     ActionSequence actSeq = getPolicyRollIn(predicate, di.getMeaningRepresentation(), classifierWords, useReferenceRollIn, ref);
+    //ROLL-IN
+    double v = r.nextDouble();
+    boolean useReferenceRollIn = false;
+    if (v <= p) {
+    useReferenceRollIn = true;
+    }
+    ActionSequence actSeq = getPolicyRollIn(predicate, di.getMeaningRepresentation(), classifierWords, useReferenceRollIn, ref);
     
-     HashMap<String, HashSet<String>> values = new HashMap();
-     for (String attr : di.getMeaningRepresentation().getAttributes().keySet()) {
-     values.put(attr, new HashSet(di.getMeaningRepresentation().getAttributes().get(attr)));
-     }
-     HashMap<String, ArrayList<String>> valuesToBeMentioned = new HashMap<>();
-     for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-     valuesToBeMentioned.put(attribute, new ArrayList(di.getMeaningRepresentation().getAttributes().get(attribute)));
-     }
-     String previousAlignment = "";
-     ArrayList<String> subPhrase = new ArrayList<>();
+    HashMap<String, HashSet<String>> values = new HashMap();
+    for (String attr : di.getMeaningRepresentation().getAttributes().keySet()) {
+    values.put(attr, new HashSet(di.getMeaningRepresentation().getAttributes().get(attr)));
+    }
+    HashMap<String, ArrayList<String>> valuesToBeMentioned = new HashMap<>();
+    for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
+    valuesToBeMentioned.put(attribute, new ArrayList(di.getMeaningRepresentation().getAttributes().get(attribute)));
+    }
+    String previousAlignment = "";
+    ArrayList<String> subPhrase = new ArrayList<>();
     
-     //FOR EVERY ACTION IN THE SEQUENCE
-     for (int a = 0; a < actSeq.getSequence().size(); a++) {
-     if (a < ref.getSequence().size() + 2) {
-     TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-     availableActions.stream().forEach((action) -> {
-     costs.put(action.getDecision(), 1.0);
-     });
+    //FOR EVERY ACTION IN THE SEQUENCE
+    for (int a = 0; a < actSeq.getSequence().size(); a++) {
+    if (a < ref.getSequence().size() + 2) {
+    TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
+    availableActions.stream().forEach((action) -> {
+    costs.put(action.getDecision(), 1.0);
+    });
     
-     //MODIFY IT TO EACH POSSIBLE AVAILABLE ACTION           
-     ExecutorService executor = Executors.newFixedThreadPool(threadsCount);
-     for (Action availableAction : availableActions) {
-     executor.execute(new ReferenceRollOutThread(actSeq, costs, a, availableAction, ref));
-     }
-     executor.shutdown();
-     while (!executor.isTerminated()) {
-     }
-     //GENERATE NEW TRAINING EXAMPLE
-     ActionSequence rollOutSeq = new ActionSequence(actSeq);
-     rollOutSeq.modifyAndShortenSequence(a, Bagel.TOKEN_END);
-     rollOutSeq.getSequence().remove(rollOutSeq.getSequence().size() - 1);
+    //MODIFY IT TO EACH POSSIBLE AVAILABLE ACTION           
+    ExecutorService executor = Executors.newFixedThreadPool(threadsCount);
+    for (Action availableAction : availableActions) {
+    executor.execute(new ReferenceRollOutThread(actSeq, costs, a, availableAction, ref));
+    }
+    executor.shutdown();
+    while (!executor.isTerminated()) {
+    }
+    //GENERATE NEW TRAINING EXAMPLE
+    ActionSequence rollOutSeq = new ActionSequence(actSeq);
+    rollOutSeq.modifyAndShortenSequence(a, Bagel.TOKEN_END);
+    rollOutSeq.getSequence().remove(rollOutSeq.getSequence().size() - 1);
     
-     //train = true;
-     newTrainingInstances.add(generateTrainingInstance(predicate, meaningRepr, availableActions, rollOutSeq, a, costs));
-     //train = false;
-     //System.exit(0);
-     }
-     }
-     }
-     //System.out.println("|-> " + modActSeq.getSequenceToString());
-     //System.out.println("C " + modActSeq.getCost());
-     }
-     Collections.shuffle(newTrainingInstances);
-     //if (classifierWords == null) {
-     classifierWords = trainClassifier(newTrainingInstances);
-     /long endTime = System.currentTimeMillis();
-     long totalTime = endTime - startTime;
-     SimpleDateFormat sdf = new SimpleDateFormat("MMM dd,yyyy HH:mm:ss");
-     Date resultdate = new Date(endTime);
+    //train = true;
+    newTrainingInstances.add(generateTrainingInstance(predicate, meaningRepr, availableActions, rollOutSeq, a, costs));
+    //train = false;
+    //System.exit(0);
+    }
+    }
+    }
+    //System.out.println("|-> " + modActSeq.getSequenceToString());
+    //System.out.println("C " + modActSeq.getCost());
+    }
+    Collections.shuffle(newTrainingInstances);
+    //if (classifierWords == null) {
+    classifierWords = trainClassifier(newTrainingInstances);
+    /long endTime = System.currentTimeMillis();
+    long totalTime = endTime - startTime;
+    SimpleDateFormat sdf = new SimpleDateFormat("MMM dd,yyyy HH:mm:ss");
+    Date resultdate = new Date(endTime);
     
-     System.out.println("Epoch after: " + totalTime / 1000 / 60 + " mins, " + sdf.format(resultdate));
-     }
-     //multiTrainClassifier(newTrainingInstances);
-     return classifierWords;
-     }*/
+    System.out.println("Epoch after: " + totalTime / 1000 / 60 + " mins, " + sdf.format(resultdate));
+    }
+    //multiTrainClassifier(newTrainingInstances);
+    return classifierWords;
+    }*/
     boolean print = false;
     static double param = 0.0;
-
+    
     public static HashMap<String, JAROW> runLOLS(String predicate, HashSet<String> attributes, ArrayList<DatasetInstance> trainingDatasetInstances, HashMap<String, ArrayList<Instance>> trainingWordInstances, HashMap<String, HashMap<String, HashSet<Action>>> availableActions, HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments, double beta, JAROW classifiersArgs, ArrayList<DatasetInstance> testingData) {
         param = 100.0;
         //param = 100.0;
@@ -158,88 +158,91 @@ public class JDAggerForBagel {
             }
         }
         trainedClassifiers.add(trainedClassifiers_0);
-        Bagel.evaluateGeneration(classifiersArgs, trainedClassifiers_0, testingData, predicate);
+        Double BLEU = Bagel.evaluateGeneration(classifiersArgs, trainedClassifiers_0, testingData, predicate);
         System.out.println("**************LOLS COMMENCING**************");
-                
+
         //INITIAL POLICY P_1
         /*int c = 0;
         for (DatasetInstance di : trainingDatasetInstances) {
-            //if (c == 0) {
-            if (true) {
-                c++;
-                HashMap<String, JAROW> trainedClassifiers_i = trainedClassifiers.get(trainedClassifiers.size() - 1);
-
-                HashMap<String, ArrayList<Instance>> newTrainingInstances = new HashMap<>();
-                for (String attr : attributes) {
-                    newTrainingInstances.put(attr, new ArrayList<Instance>(trainingWordInstances.get(attr)));
-                }
-                //ROLL-IN
-                ActionSequence actSeq = getLearnedPolicyRollIn(predicate, di, trainedClassifiers_i, valueAlignments);
-
-                //FOR EACH ACTION IN ROLL-IN SEQUENCE
-                //The number of actions is not definite...might cause issues
-                for (int index = 0; index < actSeq.getSequence().size(); index++) {
-                    //FOR EACH POSSIBLE ALTERNATIVE ACTION
-                    TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-
-                    String attr = actSeq.getSequence().get(index).getAttribute();
-                    if (!Bagel.useAlignments) {
-                        attr = Bagel.TOKEN_ATTR;
-                    }
-                    for (Action action : availableActions.get(predicate).get(attr)) {
-                        costs.put(action.getWord(), 100.0);
-                    }
-
-                    //Make the same decisions for all action substitutions
-                    boolean useReferenceRollout = true;
-
-                    String previousWord = "";
-                    if (index > 0) {
-                        previousWord = actSeq.getSequence().get(index).getWord().trim().toLowerCase();
-                    }
-                    Double bestActionCost = Double.POSITIVE_INFINITY;
-                    for (Action availableAction : availableActions.get(predicate).get(attr)) {
-                        if (!availableAction.getWord().trim().toLowerCase().equals(previousWord)) {
-                            ActionSequence modSeq = new ActionSequence(actSeq);
-
-                            modSeq.modifyAndShortenSequence(index, availableAction.getWord());
-
-                            //ROLL-OUT
-                            costs.put(availableAction.getWord().trim().toLowerCase(), getPolicyRollOutCost(predicate, modSeq, di, trainedClassifiers_i, valueAlignments, useReferenceRollout));
-
-                            if (costs.get(availableAction.getWord().trim().toLowerCase()) < bestActionCost) {
-                                bestActionCost = costs.get(availableAction.getWord().trim().toLowerCase());
-                            }
-                            //}
-                        } else {
-                            costs.put(availableAction.getWord().trim().toLowerCase(), 100.0);
-                        }
-                    }
-                    for (String s : costs.keySet()) {
-                        costs.put(s, costs.get(s) - bestActionCost);
-                    }
-                    //GENERATE NEW TRAINING EXAMPLE
-                    newTrainingInstances.get(actSeq.getSequence().get(index).getAttribute()).add(generateTrainingInstance(predicate, di, actSeq, index, valueAlignments, costs));
-                }
-
-                //UPDATE CLASSIFIER            
-                HashMap<String, JAROW> trainedClassifiers_ii = new HashMap<String, JAROW>();
-                for (String attr : trainedClassifiers_i.keySet()) {
-                    trainedClassifiers_ii.put(attr, new JAROW(trainedClassifiers_i.get(attr)));
-                    trainedClassifiers_ii.get(attr).train(newTrainingInstances.get(attr), false, true, 10, param, true);
-                }
-
-                trainedClassifiers.add(trainedClassifiers_ii);
-            }
+        //if (c == 0) {
+        if (true) {
+        c++;
+        HashMap<String, JAROW> trainedClassifiers_i = trainedClassifiers.get(trainedClassifiers.size() - 1);
+        
+        HashMap<String, ArrayList<Instance>> newTrainingInstances = new HashMap<>();
+        for (String attr : attributes) {
+        newTrainingInstances.put(attr, new ArrayList<Instance>(trainingWordInstances.get(attr)));
+        }
+        //ROLL-IN
+        ActionSequence actSeq = getLearnedPolicyRollIn(predicate, di, trainedClassifiers_i, valueAlignments);
+        
+        //FOR EACH ACTION IN ROLL-IN SEQUENCE
+        //The number of actions is not definite...might cause issues
+        for (int index = 0; index < actSeq.getSequence().size(); index++) {
+        //FOR EACH POSSIBLE ALTERNATIVE ACTION
+        TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
+        
+        String attr = actSeq.getSequence().get(index).getAttribute();
+        if (!Bagel.useAlignments) {
+        attr = Bagel.TOKEN_ATTR;
+        }
+        for (Action action : availableActions.get(predicate).get(attr)) {
+        costs.put(action.getWord(), 100.0);
+        }
+        
+        //Make the same decisions for all action substitutions
+        boolean useReferenceRollout = true;
+        
+        String previousWord = "";
+        if (index > 0) {
+        previousWord = actSeq.getSequence().get(index).getWord().trim().toLowerCase();
+        }
+        Double bestActionCost = Double.POSITIVE_INFINITY;
+        for (Action availableAction : availableActions.get(predicate).get(attr)) {
+        if (!availableAction.getWord().trim().toLowerCase().equals(previousWord)) {
+        ActionSequence modSeq = new ActionSequence(actSeq);
+        
+        modSeq.modifyAndShortenSequence(index, availableAction.getWord());
+        
+        //ROLL-OUT
+        costs.put(availableAction.getWord().trim().toLowerCase(), getPolicyRollOutCost(predicate, modSeq, di, trainedClassifiers_i, valueAlignments, useReferenceRollout));
+        
+        if (costs.get(availableAction.getWord().trim().toLowerCase()) < bestActionCost) {
+        bestActionCost = costs.get(availableAction.getWord().trim().toLowerCase());
+        }
+        //}
+        } else {
+        costs.put(availableAction.getWord().trim().toLowerCase(), 100.0);
+        }
+        }
+        for (String s : costs.keySet()) {
+        costs.put(s, costs.get(s) - bestActionCost);
+        }
+        //GENERATE NEW TRAINING EXAMPLE
+        newTrainingInstances.get(actSeq.getSequence().get(index).getAttribute()).add(generateTrainingInstance(predicate, di, actSeq, index, valueAlignments, costs));
+        }
+        
+        //UPDATE CLASSIFIER            
+        HashMap<String, JAROW> trainedClassifiers_ii = new HashMap<String, JAROW>();
+        for (String attr : trainedClassifiers_i.keySet()) {
+        trainedClassifiers_ii.put(attr, new JAROW(trainedClassifiers_i.get(attr)));
+        trainedClassifiers_ii.get(attr).train(newTrainingInstances.get(attr), false, true, 10, param, true);
+        }
+        
+        trainedClassifiers.add(trainedClassifiers_ii);
+        }
         }*/
         /*HashMap<String, ArrayList<Instance>> newTrainingInstances = new HashMap<>();
         for (String attr : attributes) {
-            newTrainingInstances.put(attr, new ArrayList<Instance>(trainingWordInstances.get(attr)));
+        newTrainingInstances.put(attr, new ArrayList<Instance>(trainingWordInstances.get(attr)));
         }*/
+        int limit = Bagel.maxRealizationSize ^ 2;
         int checkIndex = -1;
-        int epochs = 2;
+        int checkInstance = -1;
+        int epochs = 1;
         for (int e = 0; e < epochs; e++) {
             int c = 0;
+        
             for (DatasetInstance di : trainingDatasetInstances) {
                 //if (c > 0) {
                 if (true) {
@@ -250,12 +253,12 @@ public class JDAggerForBagel {
                         newTrainingInstances.put(attr, new ArrayList<Instance>());
                     }
                     /*if (e == 0) {
-                     //Initialize new training set
-                     newTrainingInstances = new HashMap<>();
-                     for (String attr : trainedClassifiers_i.keySet()) {
-                     newTrainingInstances.put(attr, new ArrayList<Instance>());
-                     }
-                     }*/
+                    //Initialize new training set
+                    newTrainingInstances = new HashMap<>();
+                    for (String attr : trainedClassifiers_i.keySet()) {
+                    newTrainingInstances.put(attr, new ArrayList<Instance>());
+                    }
+                    }*/
                     //ROLL-IN
                     ActionSequence actSeq = getLearnedPolicyRollIn(predicate, di, trainedClassifiers_i, valueAlignments);
 
@@ -284,6 +287,7 @@ public class JDAggerForBagel {
                         if (v > beta) {
                             useReferenceRollout = true;
                         }
+                            useReferenceRollout = true;
 
                         String correctRealizations = "";
                         for (ArrayList<Action> acList : di.getRealizations()) {
@@ -296,25 +300,30 @@ public class JDAggerForBagel {
 
                         String previousWord = "";
                         if (index > 0) {
-                            previousWord = actSeq.getSequence().get(index).getWord().trim().toLowerCase();
+                            previousWord = actSeq.getSequence().get(index - 1).getWord().trim().toLowerCase();
                         }
-                        //HOW DO I CHANGE THE END...by ensuring a new end
                         Double bestActionCost = Double.POSITIVE_INFINITY;
                         for (Action availableAction : availableActions.get(predicate).get(attr)) {
                             if (!availableAction.getWord().trim().toLowerCase().equals(previousWord)) {
                                 //if (!availableAction.getWord().equals(actSeq.getSequence().get(index).getWord())) {
                                 ActionSequence modSeq = new ActionSequence(actSeq);
-                                if (index == checkIndex) {
+                                //if (index == checkIndex) {
+                                if (c == checkInstance) {
+                                //if (BLEU < 0.29) {
                                     System.out.println("CORRECT " + correctRealizations);
                                     System.out.println("->| " + modSeq.getWordSequenceToString());
                                 }
                                 modSeq.modifyAndShortenSequence(index, availableAction.getWord());
-                                if (index == checkIndex) {
+                                //if (index == checkIndex) {
+                                if (c == checkInstance) {
+                                //if (BLEU < 0.29) {
                                     System.out.println("M " + modSeq.getWordSequenceToString());
                                 }
                                 //ROLL-OUT
-                                costs.put(availableAction.getWord().trim().toLowerCase(), getPolicyRollOutCost(predicate, modSeq, di, trainedClassifiers_i, valueAlignments, useReferenceRollout)/100.0);
-                                if (index == checkIndex) {
+                                costs.put(availableAction.getWord().trim().toLowerCase(), getPolicyRollOutCost(index, predicate, modSeq, di, trainedClassifiers_i, valueAlignments, useReferenceRollout));
+                                //if (index == checkIndex) {
+                                if (c == checkInstance) {
+                                //if (BLEU < 0.29) {
                                     System.out.println("A " + availableAction.getWord() + " " + costs.get(availableAction.getWord().trim().toLowerCase()));
                                 }
                                 if (costs.get(availableAction.getWord().trim().toLowerCase()) < bestActionCost) {
@@ -322,28 +331,45 @@ public class JDAggerForBagel {
                                 }
                                 //}
                             } else {
+                            /*ActionSequence modSeq = new ActionSequence(actSeq);
+                                modSeq.modifyAndShortenSequence(index, "|");
+                                System.out.println("M " + actSeq.getWordSequenceToString());
+                                System.out.println("M " + index);
+                                    System.out.println("M " + modSeq.getWordSequenceToString());
+                                System.out.println("M " + availableAction.getWord().trim().toLowerCase());
+                                System.out.println("======");*/
                                 costs.put(availableAction.getWord().trim().toLowerCase(), 1.0);
                             }
                         }
                         for (String s : costs.keySet()) {
                             costs.put(s, costs.get(s) - bestActionCost);
                         }
-                        if (index == checkIndex) {
+                        //if (index == checkIndex) {
+                        if (c == checkInstance) {
                             System.out.println("===============COSTS===============");
                             System.out.println(index);
                             System.out.println(costs);
                             //System.exit(0);
-                        //GENERATE NEW TRAINING EXAMPLE
+                            //GENERATE NEW TRAINING EXAMPLE
                         }
-                        newTrainingInstances.get(actSeq.getSequence().get(index).getAttribute()).add(generateTrainingInstance(predicate, di, actSeq, index, valueAlignments, costs));
+                        Instance in = generateTrainingInstance(predicate, di, actSeq, index, valueAlignments, costs);
+                        if (c == checkInstance) {                            
+                            System.out.println(in.getCorrectLabels());
+                        }
+                        /*if (in.getCorrectLabels().size() > 10) {
+                            System.out.println(di.getMeaningRepresentation().getAttributes() + " " + index);
+                            System.out.println(in.getCorrectLabels());
+                            System.exit(0);
+                        }*/
+                        newTrainingInstances.get(actSeq.getSequence().get(index).getAttribute()).add(in);
                     }
 
-                    //UPDATE CLASSIFIER            
+                    //UPDATE CLASSIFIER
                     HashMap<String, JAROW> trainedClassifiers_ii = new HashMap<String, JAROW>();
                     for (String attr : trainedClassifiers_i.keySet()) {
                         trainedClassifiers_ii.put(attr, new JAROW(trainedClassifiers_i.get(attr)));
                         if (!newTrainingInstances.get(attr).isEmpty()) {
-                            trainedClassifiers_ii.get(attr).trainAdditional(newTrainingInstances.get(attr), false, false, 1, true); 
+                            trainedClassifiers_ii.get(attr).trainAdditional(newTrainingInstances.get(attr), false, false, 1, true);
                         }
                         //trainedClassifiers_ii.put(attr, new JAROW(trainedClassifiers_i.get(attr)));
                         //trainedClassifiers_ii.get(attr).train(newTrainingInstances.get(attr), false, true, 10, param, true);
@@ -351,12 +377,26 @@ public class JDAggerForBagel {
                         //trainedClassifiers_ii.put(attr, JAROW.trainWithRandomRestarts(newTrainingInstances.get(attr), 10, true, 10, 100.0, true));
 
                         /*Double[] params = {0.01, 0.1, 1.0, 10.0, 100.0};
-                         JAROW classifierWords = JAROW.trainOpt(newTrainingInstances.get(attr), Bagel.rounds, params, 0.1, true, false, 0);
-                         trainedClassifiers_ii.put(attr, classifierWords);*/
+                        JAROW classifierWords = JAROW.trainOpt(newTrainingInstances.get(attr), Bagel.rounds, params, 0.1, true, false, 0);
+                        trainedClassifiers_ii.put(attr, classifierWords);*/
                     }
 
                     trainedClassifiers.add(trainedClassifiers_ii);
-                    Bagel.evaluateGeneration(classifiersArgs, trainedClassifiers_ii, testingData, predicate);
+                    Double newBLEU = Bagel.evaluateGeneration(classifiersArgs, trainedClassifiers_ii, testingData, predicate);
+                    //if (newBLEU < 0.25) {
+                    if (c == checkInstance) {
+                        for (String attr : trainedClassifiers_i.keySet()) {
+                            for (Instance in : newTrainingInstances.get(attr)) {
+                                for (String s : in.getFeatureVector().keySet()) {
+                                    if (s.startsWith("feature_5gram")) {
+                                        System.out.println(s + " " + in.getCorrectLabels());
+                                    }
+                                }
+                            }
+                        }
+                        System.exit(0);
+                    }
+                    BLEU = newBLEU;
                 }
                 c++;
             }
@@ -386,37 +426,37 @@ public class JDAggerForBagel {
     }
 
     /*public static ActionSequence getPolicyRollIn(String predicate, MeaningRepresentation mr, JAROW classifierWords, double p, ActionSequence ref) {
-     double v = r.nextDouble();
+    double v = r.nextDouble();
     
-     if (v <= p) {
-     return getReferencePolicyRollIn(ref);
-     } else {
-     return getLearnedPolicyRollIn(predicate, mr, classifierWords, ref);
-     }
-     }
+    if (v <= p) {
+    return getReferencePolicyRollIn(ref);
+    } else {
+    return getLearnedPolicyRollIn(predicate, mr, classifierWords, ref);
+    }
+    }
     
-     public static ActionSequence getPolicyRollIn(String predicate, MeaningRepresentation mr, JAROW classifierWords, boolean useReferenceRollin, ActionSequence ref) {
-     if (useReferenceRollin) {
-     return getReferencePolicyRollIn(ref);
-     } else {
-     return getLearnedPolicyRollIn(predicate, mr, classifierWords, ref);
-     }
-     }*/
-    public static Double getPolicyRollOutCost(String predicate, ActionSequence actSeq, DatasetInstance di, HashMap<String, JAROW> classifierWords, HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments, double p) {
+    public static ActionSequence getPolicyRollIn(String predicate, MeaningRepresentation mr, JAROW classifierWords, boolean useReferenceRollin, ActionSequence ref) {
+    if (useReferenceRollin) {
+    return getReferencePolicyRollIn(ref);
+    } else {
+    return getLearnedPolicyRollIn(predicate, mr, classifierWords, ref);
+    }
+    }*/
+    public static Double getPolicyRollOutCost(int index, String predicate, ActionSequence actSeq, DatasetInstance di, HashMap<String, JAROW> classifierWords, HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments, double p) {
         double v = r.nextDouble();
 
         if (v <= p) {
-            return getReferencePolicyRollOutCost(actSeq, di);
+            return getReferencePolicyRollOutCost(index, actSeq, di);
         } else {
-            return getLearnedPolicyRollOut(actSeq, predicate, di, classifierWords, valueAlignments);
+            return getLearnedPolicyRollOut(index, actSeq, predicate, di, classifierWords, valueAlignments);
         }
     }
 
-    public static Double getPolicyRollOutCost(String predicate, ActionSequence actSeq, DatasetInstance di, HashMap<String, JAROW> classifierWords, HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments, boolean useReferenceRollout) {
+    public static Double getPolicyRollOutCost(int index, String predicate, ActionSequence actSeq, DatasetInstance di, HashMap<String, JAROW> classifierWords, HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments, boolean useReferenceRollout) {
         if (useReferenceRollout) {
-            return getReferencePolicyRollOutCost(actSeq, di);
+            return getReferencePolicyRollOutCost(index, actSeq, di);
         } else {
-            return getLearnedPolicyRollOut(actSeq, predicate, di, classifierWords, valueAlignments);
+            return getLearnedPolicyRollOut(index, actSeq, predicate, di, classifierWords, valueAlignments);
         }
     }
 
@@ -424,7 +464,7 @@ public class JDAggerForBagel {
         return new ActionSequence(ref);
     }
 
-    public static Double getReferencePolicyRollOutCost(ActionSequence pAS, DatasetInstance di) {
+    public static Double getReferencePolicyRollOutCost(int index, ActionSequence pAS, DatasetInstance di) {
         int maxRefLength = 0;
         HashSet<ActionSequence> refs = new HashSet<>();
         for (ArrayList<Action> ref : di.getRealizations()) {
@@ -438,7 +478,7 @@ public class JDAggerForBagel {
 
         if (pAS.getSequence().size() > 1 && pAS.getSequence().get(pAS.getSequence().size() - 1).getWord().equals(pAS.getSequence().get(pAS.getSequence().size() - 2).getWord())) {
             //Do not repeat the same word twice in a row
-            return 100.0;
+            return 1.0;
         } else if (pAS.getSequence().size() > maxRefLength) {
             //Do not exceed (or plan to exceed) the length of the reference
             //*** Perhaps this needs to be more elegant, too tired now
@@ -446,7 +486,7 @@ public class JDAggerForBagel {
             if (pAS.getSequence().get(pAS.getSequence().size() - 1).getWord().equals(Bagel.TOKEN_END)) {
                 newAS.recalculateCost(refs);
             } else {
-                newAS.setCost(100.0);
+                newAS.setCost(1.0);
             }
             return newAS.getCost();
         } else if (pAS.getSequence().get(pAS.getSequence().size() - 1).getWord().equals(Bagel.TOKEN_END)) {
@@ -457,19 +497,38 @@ public class JDAggerForBagel {
             double minCost = Double.MAX_VALUE;
             for (ActionSequence minRAS : refs) {
                 if (pAS.getSequence().size() <= minRAS.getSequence().size()) {
-                //Let;s assume for now that the only correct response is the particular sentence that corresponds to the meaning representation in the data
-                    //Lets also assume that a good cost estimation is comparing the rollin (plus mutation) to the correct responce cut to the same length
-                    //That is because we assume that all next words will be best and not make any impression to the score (reference rollout)
+                    //Let;s assume for now that the only correct response is the particular sentence that corresponds to the meaning representation in the data
+                    
+                    //Shortening both ref and generated sequences to a 5 + 5 + 1 word window centered around the same index
                     ActionSequence newAS = new ActionSequence();
-                    for (int i = 0; i < pAS.getSequence().size(); i++) {
+                    int start = index - 5;
+                    if (start < 0) {
+                        start = 0;
+                    }
+                    for (int i = start; i < pAS.getSequence().size(); i++) {
                         newAS.getSequence().add(new Action(pAS.getSequence().get(i).getWord(), pAS.getSequence().get(i).getAttribute()));
                     }
-                    for (int i = pAS.getSequence().size(); i < minRAS.getSequence().size(); i++) {
+                    int end = index + 5 + 1;
+                    if (end >  minRAS.getSequence().size()) {
+                        end = minRAS.getSequence().size();
+                    }
+                    for (int i = pAS.getSequence().size(); i < end; i++) {
                         newAS.getSequence().add(new Action(minRAS.getSequence().get(i).getWord(), minRAS.getSequence().get(i).getAttribute()));
                     }
-                    //newAS.setCost(Levenshtein.getNormDistance(pAS.getWordSequenceToString(), newAS.getWordSequenceToString(), minRAS.getSequence().size()));
-                    newAS.setCost(ActionSequence.getHammingDistance(newAS.getWordSequenceToString(), minRAS.getWordSequenceToString()));
+                    
+                    ActionSequence shortMinRAS = new ActionSequence();
+                    for (int i = start; i < end; i++) {
+                        shortMinRAS.getSequence().add(new Action(minRAS.getSequence().get(i).getWord(), minRAS.getSequence().get(i).getAttribute()));
+                    }
+                    
+                    ArrayList<String> cleanRefs = new ArrayList<String>();
+                    cleanRefs.add(shortMinRAS.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim());
+                    newAS.setCost(ActionSequence.getBLEU(newAS.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim(), cleanRefs));
 
+                    /*System.out.println("======================") ;
+                    System.out.println("B: " + newAS.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim()) ;
+                    System.out.println("B: " + cleanRefs) ;
+                    System.out.println("B: " + newAS.getCost()) ;*/
                     if (newAS.getCost() < minCost) {
                         minCost = newAS.getCost();
                     }
@@ -597,7 +656,7 @@ public class JDAggerForBagel {
         return new ActionSequence(predictedActionsList, refs);
     }
 
-    public static double getLearnedPolicyRollOut(ActionSequence pAS, String predicate, DatasetInstance di, HashMap<String, JAROW> classifierWords, HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments) {
+    public static double getLearnedPolicyRollOut(int index, ActionSequence pAS, String predicate, DatasetInstance di, HashMap<String, JAROW> classifierWords, HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments) {
         ArrayList<Action> predictedActionsList = new ArrayList<>();
         ArrayList<String> mentionedValueSequence = null;
         //TODO: CHECK THIS
@@ -708,11 +767,36 @@ public class JDAggerForBagel {
                 predictedActionsList.remove(predictedActionsList.size() - 1);
             }
         }
-        HashSet<ActionSequence> refs = new HashSet<>();
-        for (ArrayList<Action> ref : di.getRealizations()) {
-            refs.add(new ActionSequence(ref, 0.0));
+        
+        //Shortening both ref and generated sequences to a 5 + 5 + 1 word window centered around the same index
+        ActionSequence newAS = new ActionSequence();
+        int start = index - 5;
+        if (start < 0) {
+            start = 0;
         }
-        return new ActionSequence(predictedActionsList, refs).getCost();
+        int end = index + 5 + 1;
+        if (end > predictedActionsList.size()) {
+            end = predictedActionsList.size();
+        }
+        for (int i = start; i < end; i++) {
+            newAS.getSequence().add(new Action(predictedActionsList.get(i).getWord(), predictedActionsList.get(i).getAttribute()));
+        }
+        
+        ArrayList<String> cleanRefs = new ArrayList<String>();
+        for (ArrayList<Action> ref : di.getRealizations()) {
+            end = index + 5 + 1;
+            if (end > ref.size()) {
+                end = ref.size();
+            }
+            ActionSequence shortMinRAS = new ActionSequence();
+            for (int i = start; i < end; i++) {
+                shortMinRAS.getSequence().add(new Action(ref.get(i).getWord(), ref.get(i).getAttribute()));
+            }
+            cleanRefs.add(shortMinRAS.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim());
+        }
+        newAS.setCost(ActionSequence.getBLEU(newAS.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim(), cleanRefs));
+        
+        return newAS.getCost();
     }
 
     public static Instance generateTrainingInstance(String predicate, DatasetInstance di, ActionSequence modActSeq, int index, HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments, TObjectDoubleHashMap<String> costs) {
@@ -812,23 +896,23 @@ public class JDAggerForBagel {
     }
 
     /*public static Instance generateTrainingInstance(String predicate, MeaningRepresentation meaningRepr, ArrayList<Action> availableActions, ActionSequence modActSeq, int index, TObjectDoubleHashMap<String> costs) {
-     HashMap<String, Boolean> argumentsToBeMentioned = new HashMap<>();
-     for (String argument : meaningRepr.getAttributes().keySet()) {
-     argumentsToBeMentioned.put(argument, true);
-     }
-     ArrayList<String> predictedWordsList = new ArrayList<>();
-     for (int i = 0; i <= index - 1; i++) {
-     String predictedWord = modActSeq.getSequence().get(i).getWord();
+    HashMap<String, Boolean> argumentsToBeMentioned = new HashMap<>();
+    for (String argument : meaningRepr.getAttributes().keySet()) {
+    argumentsToBeMentioned.put(argument, true);
+    }
+    ArrayList<String> predictedWordsList = new ArrayList<>();
+    for (int i = 0; i <= index - 1; i++) {
+    String predictedWord = modActSeq.getSequence().get(i).getWord();
     
-     predictedWordsList.add(predictedWord);
-     for (String arg : argumentsToBeMentioned.keySet()) {
-     if (predictedWord.equals(arg)) {
-     argumentsToBeMentioned.put(arg, false);
-     }
-     }
-     }
-     return Bagel.createWordInstance(predicate, predictedWordsList, index, costs, argumentsToBeMentioned);
-     }*/
+    predictedWordsList.add(predictedWord);
+    for (String arg : argumentsToBeMentioned.keySet()) {
+    if (predictedWord.equals(arg)) {
+    argumentsToBeMentioned.put(arg, false);
+    }
+    }
+    }
+    return Bagel.createWordInstance(predicate, predictedWordsList, index, costs, argumentsToBeMentioned);
+    }*/
     public static JAROW trainClassifier(ArrayList<Instance> trainingWordInstances) {
         //JAROW classifierWords = new JAROW();
         //classifierWords.train(trainingWordInstances, false, true, 10, param, true);
@@ -838,7 +922,7 @@ public class JDAggerForBagel {
         JAROW classifierWords = JAROW.trainOpt(trainingWordInstances, Bagel.rounds, params, 0.1, true, false, 0);
         return classifierWords;
     }
-    
+
     public static JAROW trainClassifier(ArrayList<Instance> trainingWordInstances, Double param) {
         JAROW classifierWords = new JAROW();
         classifierWords.train(trainingWordInstances, false, true, 10, param, true);

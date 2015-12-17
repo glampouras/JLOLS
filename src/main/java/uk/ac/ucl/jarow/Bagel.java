@@ -215,7 +215,7 @@ public class Bagel {
         return classifier;
     }
 
-    public static void evaluateGeneration(JAROW classifierArgs, HashMap<String, JAROW> classifierWords, ArrayList<DatasetInstance> testingData, String predicate) {
+    public static Double evaluateGeneration(JAROW classifierArgs, HashMap<String, JAROW> classifierWords, ArrayList<DatasetInstance> testingData, String predicate) {
         System.out.println("Evaluate argument generation " + predicate);
 
         int totalArgDistance = 0;
@@ -398,8 +398,8 @@ public class Bagel {
                     predictedString += action.getWord() + " ";
                 }
             }
+            predictedString = predictedString.replaceAll("\\p{Punct}|\\d", "");
             predictedString = predictedString.trim() + ".";
-            // predictedString = predictedString.replaceAll("\\p{Punct}|\\d","");
 
             Sequence<IString> translation = IStrings.tokenize(NISTTokenizer.tokenize(predictedString.toLowerCase()));
             ScoredFeaturizedTranslation<IString, String> tran = new ScoredFeaturizedTranslation<>(translation, null, 0);
@@ -417,11 +417,12 @@ public class Bagel {
                         }
                     }
                 }
+                //UNCOMMENTED THE REPLACES HERE
+                cleanedWords = cleanedWords.replaceAll("\\p{Punct}|\\d", "");
                 cleanedWords = cleanedWords.trim();
                 if (!cleanedWords.endsWith(".")) {
-                     cleanedWords += ".";
+                    cleanedWords += ".";
                 }
-                //cleanedWords = cleanedWords.replaceAll("\\p{Punct}|\\d","");
                 references.add(IStrings.tokenize(NISTTokenizer.tokenize(cleanedWords)));
             }
             finalReferences.add(references);
@@ -506,6 +507,8 @@ public class Bagel {
         System.out.println("NIST: " + nistScore);
         System.out.println("BLEU: " + bleuScore);
         System.out.println("BLEU smooth: " + bleuSmoothScore);
+
+        return bleuScore;
     }
 
     public static void createLists(File dataFile) {
@@ -1397,37 +1400,36 @@ public class Bagel {
 
                         //x assignment
                         /*HashMap<Integer, HashSet<ArrayList<Integer>>> xClusters = new HashMap<>();
-                        for (int i = 0; i < randomRealization.size(); i++) {
-                            if (randomRealization.get(i).getWord().startsWith(Bagel.TOKEN_X)) {
-                                ArrayList<Integer> index = new ArrayList<>();
-                                index.add(i);
-                                if (!xClusters.containsKey(index.size())) {
-                                    xClusters.put(index.size(), new HashSet<>());
-                                }
-                                xClusters.get(index.size()).add(index);
+                         for (int i = 0; i < randomRealization.size(); i++) {
+                         if (randomRealization.get(i).getWord().startsWith(Bagel.TOKEN_X)) {
+                         ArrayList<Integer> index = new ArrayList<>();
+                         index.add(i);
+                         if (!xClusters.containsKey(index.size())) {
+                         xClusters.put(index.size(), new HashSet<>());
+                         }
+                         xClusters.get(index.size()).add(index);
 
-                                int j = i + 1;
-                                while (j < randomRealization.size()) {
-                                    if (randomRealization.get(j).getWord().startsWith(Bagel.TOKEN_X)) {
-                                        index = new ArrayList<>(index);
-                                        index.add(j);
+                         int j = i + 1;
+                         while (j < randomRealization.size()) {
+                         if (randomRealization.get(j).getWord().startsWith(Bagel.TOKEN_X)) {
+                         index = new ArrayList<>(index);
+                         index.add(j);
 
-                                        if (!xClusters.containsKey(index.size())) {
-                                            xClusters.put(index.size(), new HashSet<>());
-                                        }
-                                        xClusters.get(index.size()).add(index);
-                                        j++;
-                                    } else if (randomRealization.get(j).getWord().equals("and")
-                                            || randomRealization.get(j).getWord().equals(",")
-                                            || randomRealization.get(j).getWord().equals("or")) {
-                                        j++;
-                                    } else {
-                                        j = randomRealization.size();
-                                    }
-                                }
-                            }
-                        }*/
-
+                         if (!xClusters.containsKey(index.size())) {
+                         xClusters.put(index.size(), new HashSet<>());
+                         }
+                         xClusters.get(index.size()).add(index);
+                         j++;
+                         } else if (randomRealization.get(j).getWord().equals("and")
+                         || randomRealization.get(j).getWord().equals(",")
+                         || randomRealization.get(j).getWord().equals("or")) {
+                         j++;
+                         } else {
+                         j = randomRealization.size();
+                         }
+                         }
+                         }
+                         }*/
                         HashMap<Double, HashMap<String, ArrayList<Integer>>> indexAlignments = new HashMap<>();
                         //HashMap<Integer, HashSet<ArrayList<String>>> attrXValues = new HashMap<>();
                         for (String attr : values.keySet()) {
@@ -1457,54 +1459,54 @@ public class Bagel {
                                     //}
                                 }
                                 /*if (!xValues.isEmpty()) {
-                                    if (!attrXValues.containsKey(xValues.size())) {
-                                        attrXValues.put(xValues.size(), new HashSet<>());
-                                    }
-                                    attrXValues.get(xValues.size()).add(xValues);
-                                }*/
+                                 if (!attrXValues.containsKey(xValues.size())) {
+                                 attrXValues.put(xValues.size(), new HashSet<>());
+                                 }
+                                 attrXValues.get(xValues.size()).add(xValues);
+                                 }*/
                             }
                         }
                         /*ArrayList<Integer> attrXValuesLengths = new ArrayList<>(attrXValues.keySet());
-                        Collections.sort(attrXValuesLengths);
-                        HashSet<Integer> assignedXIntegers = new HashSet<Integer>();
-                        HashSet<String> assignedXAttrValues = new HashSet<String>();
-                        for (int a = attrXValuesLengths.size() - 1; a >= 0; a--) {
-                            for (ArrayList<String> attrValues : attrXValues.get(attrXValuesLengths.get(a))) {
-                                if (xClusters.get(attrValues.size()) == null) {
-                                    ArrayList<String> splitAttrValuesLeft = new ArrayList<String>();
-                                    ArrayList<String> splitAttrValuesRight = new ArrayList<String>();
-                                    for (int i = 0; i < attrValues.size() - 1; i++) {
-                                        splitAttrValuesLeft.add(attrValues.get(i));
-                                    }
-                                    splitAttrValuesRight.add(attrValues.get(attrValues.size() - 1));
+                         Collections.sort(attrXValuesLengths);
+                         HashSet<Integer> assignedXIntegers = new HashSet<Integer>();
+                         HashSet<String> assignedXAttrValues = new HashSet<String>();
+                         for (int a = attrXValuesLengths.size() - 1; a >= 0; a--) {
+                         for (ArrayList<String> attrValues : attrXValues.get(attrXValuesLengths.get(a))) {
+                         if (xClusters.get(attrValues.size()) == null) {
+                         ArrayList<String> splitAttrValuesLeft = new ArrayList<String>();
+                         ArrayList<String> splitAttrValuesRight = new ArrayList<String>();
+                         for (int i = 0; i < attrValues.size() - 1; i++) {
+                         splitAttrValuesLeft.add(attrValues.get(i));
+                         }
+                         splitAttrValuesRight.add(attrValues.get(attrValues.size() - 1));
 
-                                    attrXValues.get(splitAttrValuesLeft.size()).add(splitAttrValuesLeft);
-                                    attrXValues.get(splitAttrValuesRight.size()).add(splitAttrValuesRight);
-                                } else {
-                                    ArrayList<ArrayList<Integer>> xCls = new ArrayList<>(xClusters.get(attrValues.size()));
-                                    //Collections.shuffle(xCls);
+                         attrXValues.get(splitAttrValuesLeft.size()).add(splitAttrValuesLeft);
+                         attrXValues.get(splitAttrValuesRight.size()).add(splitAttrValuesRight);
+                         } else {
+                         ArrayList<ArrayList<Integer>> xCls = new ArrayList<>(xClusters.get(attrValues.size()));
+                         //Collections.shuffle(xCls);
 
-                                    for (int i = 0; i < xCls.size(); i++) {
-                                        boolean isUnassigned = true;
+                         for (int i = 0; i < xCls.size(); i++) {
+                         boolean isUnassigned = true;
 
-                                        for (Integer index : xCls.get(i)) {
-                                            if (assignedXIntegers.contains(index)) {
-                                                isUnassigned = false;
-                                            }
-                                        }
-                                        if (isUnassigned) {
-                                            assignedXAttrValues.add(attrValues.get(0));
-                                            String attr = attrValues.get(0).substring(0, attrValues.get(0).indexOf("|"));
-                                            for (int j = xCls.get(i).get(0); j <= xCls.get(i).get(xCls.get(i).size() - 1); j++) {
-                                                assignedXIntegers.add(j);
-                                                randomRealization.get(j).setAttribute(attr);
-                                            }
-                                            i = xCls.size();
-                                        }
-                                    }
-                                }
-                            }
-                        }*/
+                         for (Integer index : xCls.get(i)) {
+                         if (assignedXIntegers.contains(index)) {
+                         isUnassigned = false;
+                         }
+                         }
+                         if (isUnassigned) {
+                         assignedXAttrValues.add(attrValues.get(0));
+                         String attr = attrValues.get(0).substring(0, attrValues.get(0).indexOf("|"));
+                         for (int j = xCls.get(i).get(0); j <= xCls.get(i).get(xCls.get(i).size() - 1); j++) {
+                         assignedXIntegers.add(j);
+                         randomRealization.get(j).setAttribute(attr);
+                         }
+                         i = xCls.size();
+                         }
+                         }
+                         }
+                         }
+                         }*/
                         ArrayList<Double> similarities = new ArrayList<>(indexAlignments.keySet());
                         Collections.sort(similarities);
                         HashSet<String> assignedAttrValues = new HashSet<String>();
@@ -1519,7 +1521,7 @@ public class Bagel {
                                         }
                                     }
                                     if (isUnassigned) {
-                                        assignedAttrValues.add(attrValue);                                        
+                                        assignedAttrValues.add(attrValue);
                                         String attr = attrValue.substring(0, attrValue.indexOf("|"));
                                         for (Integer index : indexAlignments.get(similarities.get(i)).get(attrValue)) {
                                             assignedIntegers.add(index);
@@ -1529,7 +1531,7 @@ public class Bagel {
                                 }
                             }
                         }
-                        
+
                         for (Action a : randomRealization) {
                             if (a.getWord().startsWith(Bagel.TOKEN_X)) {
                                 a.setAttribute(a.getWord().substring(3));
@@ -1572,7 +1574,7 @@ public class Bagel {
                                 previousAttr = randomRealization.get(i).getAttribute();
                             }
                         }
-                        
+
                         previousAttr = "";
                         for (int i = randomRealization.size() - 1; i >= 0; i--) {
                             if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -1583,7 +1585,7 @@ public class Bagel {
                                 previousAttr = randomRealization.get(i).getAttribute();
                             }
                         }
-                                                
+
                         HashMap<String, ArrayList<String>> valuesToBeMentioned = new HashMap<>();
                         for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
                             valuesToBeMentioned.put(attribute, new ArrayList(di.getMeaningRepresentation().getAttributes().get(attribute)));
@@ -1641,6 +1643,17 @@ public class Bagel {
                         }
                     }
                     predicateWordTrainingData.get(predicate).put(di, instances);
+                    for (String attr : attributes.get(predicate)) {
+                        if (instances.containsKey(attr)) {
+                            for (Instance in : instances.get(attr)) {
+                                for (String s : in.getFeatureVector().keySet()) {
+                                    if (s.startsWith("feature_5gram")) {
+                                        System.out.println(s + " " + in.getCorrectLabels());
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1908,7 +1921,10 @@ public class Bagel {
          features.put("feature_AE_5gram_" + prevAE5gram.toLowerCase(), 1.0);*/
         //Previous attr features
         //System.out.println("Â£Â£Â£ "  + nlWords);
-        for (int j = 1; j <= 5; j++) {
+        
+        //ENABLE ATTR FEATURES FOR A "weird" BOOST IN SCORES
+        //Remember to check bug regarding the initialization of attrs collection in createRandomAlignment function
+        /*for (int j = 1; j <= 5; j++) {
             String previousAttr = "";
             if (a - j >= 0) {
                 previousAttr = generatedAttributes.get(a - j).trim();
@@ -1918,7 +1934,7 @@ public class Bagel {
             } else {
                 features.put("feature_attr_" + j + "_@@", 1.0);
             }
-        }
+        }*/
         //Attribute N-Grams            
         String prevAttr = "@@";
         if (a - 1 >= 0) {
@@ -1946,10 +1962,10 @@ public class Bagel {
         String prevAttr4gram = prevPrevPrevPrevAttr + "|" + prevPrevPrevAttr + "|" + prevPrevAttr + "|" + prevAttr;
         String prevAttr5gram = prevPrevPrevPrevPrevAttr + "|" + prevPrevPrevPrevAttr + "|" + prevPrevPrevAttr + "|" + prevPrevAttr + "|" + prevAttr;
 
-        features.put("feature_Attr_bigram_" + prevAttrBigram.toLowerCase(), 1.0);
+        /*features.put("feature_Attr_bigram_" + prevAttrBigram.toLowerCase(), 1.0);
         features.put("feature_Attr_trigram_" + prevAttrTrigram.toLowerCase(), 1.0);
         features.put("feature_Attr_4gram_" + prevAttr4gram.toLowerCase(), 1.0);
-        features.put("feature_Attr_5gram_" + prevAttr5gram.toLowerCase(), 1.0);
+        features.put("feature_Attr_5gram_" + prevAttr5gram.toLowerCase(), 1.0);*/
 
         //If values have already been generated or not
         int x = 1;
@@ -2135,7 +2151,6 @@ public class Bagel {
          System.out.println();
          }
          //System.exit(0);*/
-        
         //System.out.println(costs);
         return new Instance(features, costs);
     }

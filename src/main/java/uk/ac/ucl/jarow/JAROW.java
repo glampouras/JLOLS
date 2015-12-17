@@ -432,7 +432,7 @@ public class JAROW implements Serializable {
                         }
                     }
 
-                    Double parameter = 100.0;
+                    //Double parameter = 1000.0;
                     // the loss is the scaled margin loss also used by Mejer and Crammer 2010
                     Double loss = prediction.getScore() - minCorrectLabelScore + Math.sqrt(instance.getCosts().get(prediction.getLabel()));
                     if (adapt) {
@@ -455,7 +455,7 @@ public class JAROW implements Serializable {
                             }
                         }
                         Double confidence = dotProduct(zVectorPredicted, instance.getFeatureVector()) + dotProduct(zVectorMinCorrect, instance.getFeatureVector());
-                        Double beta = 1.0 / (confidence + parameter);
+                        Double beta = 1.0 / (confidence + param);
                         Double alpha = loss * beta;
 
                         // update the current weight vectors
@@ -487,7 +487,7 @@ public class JAROW implements Serializable {
                     } else {
                         // the squared norm is twice the square of the features since they are the same per class 
                         Double norm = 2.0 * dotProduct(instance.getFeatureVector(), instance.getFeatureVector());
-                        Double factor = loss / (norm + 1.0 / (2.0 * parameter));
+                        Double factor = loss / (norm + 1.0 / (2.0 * param));
 
                         for (String feature : instance.getFeatureVector().keySet()) {
                             this.currentWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -factor * instance.getFeatureVector().get(feature), -factor * instance.getFeatureVector().get(feature));
@@ -510,7 +510,7 @@ public class JAROW implements Serializable {
                 if (averaging) {
                     averagingUpdates++;
                 }
-                /*prediction = this.predict(instance);
+               /* prediction = this.predict(instance);
                 System.out.println(prediction.getLabel() + " >>>" + instance.getCosts().get(prediction.getLabel()));
                 for (String correct : instance.getCorrectLabels()) {
                     System.out.println("C " + correct  + " >>> " + prediction.getLabel2Score().get(correct));

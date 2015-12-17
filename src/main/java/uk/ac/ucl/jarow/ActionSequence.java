@@ -1,5 +1,6 @@
 package uk.ac.ucl.jarow;
 
+import edu.stanford.nlp.mt.metrics.BLEUMetric;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -35,20 +36,31 @@ public class ActionSequence implements Comparable {
     public ActionSequence(ArrayList<Action> sequence, ActionSequence ref) {
         this.sequence = new ArrayList<>(sequence);
         //this.cost = Levenshtein.getNormDistance(getWordSequenceToString(), ref.getWordSequenceToString());
-        this.cost = getHammingDistance(getWordSequenceToString(), ref.getWordSequenceToString());
+        ArrayList<String> cleanRefs = new ArrayList<String>();
+        cleanRefs.add(ref.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim());
+        this.cost = getBLEU(getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim(), cleanRefs);
     }
 
     public ActionSequence(ArrayList<Action> sequence, HashSet<ActionSequence> refs) {
         this.sequence = new ArrayList<>(sequence);
 
         double min = Double.POSITIVE_INFINITY;
-        for (ActionSequence ref : refs) {
+        /*for (ActionSequence ref : refs) {
             //double c = Levenshtein.getNormDistance(getWordSequenceToString(), ref.getWordSequenceToString());
-            double c = getHammingDistance(getWordSequenceToString(), ref.getWordSequenceToString());
+            double c = getBLEU(getWordSequenceToString(), ref.getWordSequenceToString());
             if (c < min) {
                 min = c;
             }
+        System.out.println(getWordSequenceToString());
+        System.out.println(ref.getWordSequenceToString());
+        System.out.println("= " + c);
+        }*/
+        
+        ArrayList<String> cleanRefs = new ArrayList<String>();
+        for (ActionSequence ref : refs) {
+            cleanRefs.add(ref.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim());
         }
+        min = getBLEU(getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim(), cleanRefs);
 
         this.cost = min;
     }
@@ -68,18 +80,25 @@ public class ActionSequence implements Comparable {
 
     public void recalculateCost(ActionSequence ref) {
         //this.cost = Levenshtein.getNormDistance(getWordSequenceToString(), ref.getWordSequenceToString());
-        this.cost = getHammingDistance(getWordSequenceToString(), ref.getWordSequenceToString());
+        ArrayList<String> cleanRefs = new ArrayList<String>();
+        cleanRefs.add(ref.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim());
+        this.cost = getBLEU(getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim(), cleanRefs);
     }
 
     public void recalculateCost(HashSet<ActionSequence> refs) {
         double min = Double.POSITIVE_INFINITY;
-        for (ActionSequence ref : refs) {
+        /*for (ActionSequence ref : refs) {
             //double c = Levenshtein.getNormDistance(getWordSequenceToString().toLowerCase(), ref.getWordSequenceToString().toLowerCase());
-            double c = getHammingDistance(getWordSequenceToString(), ref.getWordSequenceToString());
+            double c = getBLEU(getWordSequenceToString(), ref.getWordSequenceToString());
             if (c < min) {
                 min = c;
             }
+        }*/
+        ArrayList<String> cleanRefs = new ArrayList<String>();
+        for (ActionSequence ref : refs) {
+            cleanRefs.add(ref.getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim());
         }
+        min = getBLEU(getWordSequenceToString().toLowerCase().replaceAll("\\p{Punct}|\\d","").trim().replaceAll("  "," "), cleanRefs);
 
         this.cost = min;
     }
@@ -132,15 +151,21 @@ public class ActionSequence implements Comparable {
     public static double calculateDistance(String sequenceString, ArrayList<String> unbiasedRefList) {
         double minScore = 1000000000000.0;
         String minRef = "";
-        for (String ref : unbiasedRefList) {
+        /*for (String ref : unbiasedRefList) {
             //double score = Levenshtein.getNormDistance(sequenceString, ref);
-            double score = getHammingDistance(sequenceString, ref);
+            double score = getBLEU(sequenceString, ref);
             if (score < minScore) {
                 minRef = ref;
                 minScore = score;
             }
+        }*/
+        ArrayList<String> cleanRefs = new ArrayList<String>();
+        for (String ref : unbiasedRefList) {
+            cleanRefs.add(ref.toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim());
         }
-        System.out.println("MINREF " + minRef + " > " + minScore);
+        minScore = getBLEU(sequenceString.toLowerCase().replaceAll("\\p{Punct}|\\d","").replaceAll("  "," ").trim(), cleanRefs);
+        
+        //System.out.println("MINREF " + minRef + " > " + minScore);
         return minScore;
     }
 
@@ -161,9 +186,13 @@ public class ActionSequence implements Comparable {
         return 0;
     }
 
+    public static double getBLEU(String s1, ArrayList<String> s2s) {        
+        return 1.0 - BLEUMetric.computeLocalSmoothScore(s1, s2s, 4);
+    }
+        
     public static int getHammingDistance(String s1, String s2) {
-        String[] tokens1 = s1.split(" ");
-        String[] tokens2 = s2.split(" ");
+        String[] tokens1 = s1.replaceAll("\\p{Punct}|\\d","").split(" ");
+        String[] tokens2 = s2.replaceAll("\\p{Punct}|\\d","").split(" ");
 
         ArrayList<String> tokens1List = new ArrayList<String>();
         for (int i = 0; i < tokens1.length; i++) {
@@ -188,7 +217,7 @@ public class ActionSequence implements Comparable {
 
                     int distance = Math.abs(i - j);
                     if (!matches.containsKey(distance)) {
-                        matches.put(distance, new HashSet());
+                        matches.put(distance, new HashSet<ArrayList<Integer>>());
                     }
                     matches.get(distance).add(match);
                 }
@@ -213,12 +242,12 @@ public class ActionSequence implements Comparable {
 
         for (int i = 0; i < tokens1List.size(); i++) {
             if (!usedIs.contains(i)) {
-                totalDistance += (i + 1);
+                totalDistance += i + 1;
             }
         }
         for (int j = 0; j < tokens2List.size(); j++) {
             if (!usedJs.contains(j)) {
-                totalDistance += (j + 1);
+                totalDistance += j + 1;
             }
         }
         return totalDistance;
