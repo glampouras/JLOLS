@@ -35,7 +35,6 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
-import similarity_measures.Cosine;
 import similarity_measures.Levenshtein;
 import uk.ac.ucl.jdagger.JDAgger;
 
