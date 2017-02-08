@@ -16,35 +16,109 @@
  */
 package imitationNLG;
 
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
 
-public class MeaningRepresentation {
+/**
+ *
+ * @author Gerasimos Lampouras
+ */
+public class MeaningRepresentation implements Serializable {
     private String predicate;
     private HashMap<String, HashSet<String>> arguments;
     private HashMap<String, String> delexMap = new HashMap<>();
     
     String MRstr = "";
 
+    /**
+     *
+     * @param predicate
+     * @param arguments
+     * @param MRstr
+     */
     public MeaningRepresentation(String predicate, HashMap<String, HashSet<String>> arguments, String MRstr) {
         this.predicate = predicate;
         this.arguments = arguments;
         this.MRstr = MRstr;
     }
 
+    /**
+     *
+     * @return
+     */
     public String getPredicate() {
         return predicate;
     }
 
+    /**
+     *
+     * @return
+     */
     public HashMap<String, HashSet<String>> getAttributes() {
         return arguments;
     }
 
+    String abstractMR = "";
+
+    /**
+     *
+     * @return
+     */
+    public String getAbstractMR() {
+        if (abstractMR.isEmpty()) {
+            abstractMR = predicate + ":";
+            ArrayList<String> attrs = new ArrayList<>(arguments.keySet());
+            Collections.sort(attrs);
+            HashMap<String, Integer> xCounts = new HashMap<>();
+            for (String attr : attrs) {
+                xCounts.put(attr, 0);
+            }
+            for (String attr : attrs) {
+                abstractMR += attr + "={";
+
+                ArrayList<String> values = new ArrayList<>(arguments.get(attr));
+                Collections.sort(values);
+                for (String value : values) {
+                    if (attr.equals("name")
+                            || attr.equals("type")
+                            || attr.equals("pricerange")
+                            || attr.equals("price")
+                            || attr.equals("phone")
+                            || attr.equals("address")
+                            || attr.equals("postcode")
+                            || attr.equals("area")
+                            || attr.equals("near")
+                            || attr.equals("food")
+                            || attr.equals("goodformeal")
+                            || attr.equals("count")) {
+                        abstractMR += Action.TOKEN_X + attr + "_" + xCounts.get(attr) + ",";
+                        xCounts.put(attr, xCounts.get(attr) + 1);
+                    } else {
+                        abstractMR += value + ",";
+                    }
+                }            
+                abstractMR += "}";
+            }
+        }
+        return abstractMR;
+    }
+
+    /**
+     *
+     * @return
+     */
     public String getMRstr() {
         return MRstr;
     }
 
+    /**
+     *
+     * @return
+     */
     @Override
     public int hashCode() {
         int hash = 7;
@@ -53,6 +127,11 @@ public class MeaningRepresentation {
         return hash;
     }
 
+    /**
+     *
+     * @param obj
+     * @return
+     */
     @Override
     public boolean equals(Object obj) {
         if (obj == null) {
@@ -71,10 +150,18 @@ public class MeaningRepresentation {
         return true;
     }
 
+    /**
+     *
+     * @return
+     */
     public HashMap<String, String> getDelexMap() {
         return delexMap;
     }
 
+    /**
+     *
+     * @param delexMap
+     */
     public void setDelexMap(HashMap<String, String> delexMap) {
         this.delexMap = delexMap;
     }

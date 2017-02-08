@@ -16,8 +16,6 @@
  */
 package jarow;
 
-import imitationNLG.RoboCup;
-import imitationNLG.Bagel;
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TObjectDoubleHashMap;
 import java.io.FileInputStream;
@@ -30,7 +28,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Random;
 
+/**
+ *
+ * @author Gerasimos Lampouras
+ */
 public class JAROW implements Serializable {
 
     private boolean probabilities;
@@ -45,6 +48,9 @@ public class JAROW implements Serializable {
     private int averagingUpdates = 0;
     private double param;
 
+    /**
+     *
+     */
     public JAROW() {
         this.probabilities = false;
         this.currentWeightVectors = new THashMap<>();
@@ -54,22 +60,30 @@ public class JAROW implements Serializable {
         //FOR FEATURES TO BE TREATED AS GLOBAL THEIR IDENTIFIERS MUST START WITH "global_"
         this.currentGlobalWeightVectors = new TObjectDoubleHashMap<>();
         this.currentGlobalVarianceVectors = new TObjectDoubleHashMap<>();
+        
+        this.probWeightVectors = new ArrayList<>();
+        this.averagedWeightVectors = new THashMap<>();
 
-        this.averagedGlobalWeightVectors = new TObjectDoubleHashMap<>();
+        this.probGlobalWeightVectors = new ArrayList<>();
+        this.averagedGlobalWeightVectors = new TObjectDoubleHashMap<>();        
     }
 
+    /**
+     *
+     * @param j
+     */
     public JAROW(JAROW j) {
         this.probabilities = j.probabilities;
         this.currentWeightVectors = new THashMap<>();
         for (String key : j.currentWeightVectors.keySet()) {
-            this.currentWeightVectors.put(key, new TObjectDoubleHashMap<String>(j.currentWeightVectors.get(key)));
+            this.currentWeightVectors.put(key, new TObjectDoubleHashMap<String>(j.getCurrentWeightVectors().get(key)));
         }
         this.currentVarianceVectors = new THashMap<>();
         for (String key : j.currentVarianceVectors.keySet()) {
-            this.currentVarianceVectors.put(key, new TObjectDoubleHashMap<String>(j.currentVarianceVectors.get(key)));
+            this.currentVarianceVectors.put(key, new TObjectDoubleHashMap<String>(j.getCurrentVarianceVectors().get(key)));
         }
-        this.currentGlobalWeightVectors = new TObjectDoubleHashMap<String>(j.currentGlobalWeightVectors);
-        this.currentGlobalVarianceVectors = new TObjectDoubleHashMap<String>(j.currentGlobalVarianceVectors);
+        this.currentGlobalWeightVectors = new TObjectDoubleHashMap<String>(j.getCurrentGlobalWeightVectors());
+        this.currentGlobalVarianceVectors = new TObjectDoubleHashMap<String>(j.getCurrentGlobalVarianceVectors());
 
         if (j.probWeightVectors != null) {
             this.probWeightVectors = new ArrayList<>();
@@ -84,7 +98,7 @@ public class JAROW implements Serializable {
         if (j.averagedWeightVectors != null) {
             this.averagedWeightVectors = new THashMap<>();
             for (String key : j.averagedWeightVectors.keySet()) {
-                this.averagedWeightVectors.put(key, new TObjectDoubleHashMap<String>(j.averagedWeightVectors.get(key)));
+                this.averagedWeightVectors.put(key, new TObjectDoubleHashMap<String>(j.getAveragedWeightVectors().get(key)));
             }
         }
         if (j.probGlobalWeightVectors != null) {
@@ -96,16 +110,21 @@ public class JAROW implements Serializable {
 
         }
         if (j.averagedGlobalWeightVectors != null) {
-            this.averagedGlobalWeightVectors = new TObjectDoubleHashMap<>(j.averagedGlobalWeightVectors);
+            this.averagedGlobalWeightVectors = new TObjectDoubleHashMap<>(j.getAveragedGlobalWeightVectors());
         }
         this.averagingUpdates = j.averagingUpdates;
         this.param = j.param;
     }
 
+    /**
+     *
+     * @param label
+     * @return
+     */
     public TObjectDoubleHashMap<String> getWeightVector(String label) {
         TObjectDoubleHashMap<String> weightVector = new TObjectDoubleHashMap<String>();
-        if (currentWeightVectors.containsKey(label)) {
-            weightVector.putAll(currentWeightVectors.get(label));
+        if (getCurrentWeightVectors().containsKey(label)) {
+            weightVector.putAll(getCurrentWeightVectors().get(label));
         }
         weightVector.putAll(getCurrentGlobalWeightVectors());
 
@@ -113,17 +132,30 @@ public class JAROW implements Serializable {
     }
 
     // This predicts always using the current weight vectors
+
+    /**
+     *
+     * @param instance
+     * @return
+     */
     public Prediction predict(Instance instance) {
         return predict(instance, false, false);
     }
     
+    /**
+     *
+     * @param instance
+     * @param verbose
+     * @param probabilities
+     * @return
+     */
     public Prediction predict(Instance instance, boolean verbose/* = false*/, boolean probabilities/* = false*/) {
         //# always add the bias
         instance.getGeneralFeatureVector().put("biasAutoAdded", 1.0);
 
         Prediction prediction = new Prediction();
 
-        for (String label : currentWeightVectors.keySet()) {
+        for (String label : getCurrentWeightVectors().keySet()) {
             Double score = dotProduct(instance.getFeatureVector(label), this.getWeightVector(label));
             prediction.getLabel2Score().put(label, score);
             if (Double.compare(score, prediction.getScore()) > 0) {
@@ -139,22 +171,22 @@ public class JAROW implements Serializable {
                 ArrayList<Object> fvw = new ArrayList<>();
                 fvw.add(feature);
                 fvw.add(featureVector.get(feature));
-                fvw.add(currentWeightVectors.get(prediction.getLabel()).get(feature));
-                fvw.add(currentGlobalWeightVectors.get(feature));
+                fvw.add(getCurrentWeightVectors().get(prediction.getLabel()).get(feature));
+                fvw.add(getCurrentGlobalWeightVectors().get(feature));
 
                 prediction.getFeatureValueWeights().add(fvw);
             }
         }
         if (probabilities) {
             // if we have probabilistic training
-            if (this.probabilities) {
+            if (this.isProbabilities()) {
                 TObjectDoubleHashMap<String> probPredictions = new TObjectDoubleHashMap<>();
-                for (String label : this.probWeightVectors.get(0).keySet()) {
+                for (String label : this.getProbWeightVectors().get(0).keySet()) {
                     // smoothing the probabilities with add 0.01 of 1 out of the vectors
-                    probPredictions.put(label, 0.01 / this.probWeightVectors.size());
+                    probPredictions.put(label, 0.01 / this.getProbWeightVectors().size());
                 }
                 // for each of the weight vectors obtained get its prediction
-                for (THashMap<String, TObjectDoubleHashMap<String>> probWeightVector : this.probWeightVectors) {
+                for (THashMap<String, TObjectDoubleHashMap<String>> probWeightVector : this.getProbWeightVectors()) {
                     Double maxScore = Double.NEGATIVE_INFINITY;
                     String maxLabel = null;
                     for (String label : probWeightVector.keySet()) {
@@ -171,7 +203,7 @@ public class JAROW implements Serializable {
                 // now let's normalize:
                 for (String label : probPredictions.keySet()) {
                     Double score = probPredictions.get(label);
-                    prediction.getLabel2prob().put(label, score / (double) this.probWeightVectors.size());
+                    prediction.getLabel2prob().put(label, score / (double) this.getProbWeightVectors().size());
                 }
                 // Also compute the entropy:
                 for (Double prob : prediction.getLabel2prob().values()) {
@@ -191,10 +223,22 @@ public class JAROW implements Serializable {
 
     // This is just used to optimize the params
     // if probabilities is True we return the ratio for the average entropies, otherwise the loss
+
+    /**
+     *
+     * @param instances
+     * @return
+     */
     public double batchPredict(ArrayList<Instance> instances) {
         return batchPredict(instances, false);
     }
 
+    /**
+     *
+     * @param instances
+     * @param probabilities
+     * @return
+     */
     public double batchPredict(ArrayList<Instance> instances, boolean probabilities) {
         Double totalCost = 0.0;
         Double sumCorrectEntropies = 0.0;
@@ -249,13 +293,23 @@ public class JAROW implements Serializable {
         }
     }
 
+    /**
+     *
+     * @param trainingWordInstances
+     * @param restarts
+     * @param averaging
+     * @param rounds
+     * @param param
+     * @param adapt
+     * @return
+     */
     public static JAROW trainWithRandomRestarts(ArrayList<Instance> trainingWordInstances, int restarts, boolean averaging, int rounds, Double param, boolean adapt) {
         double minCost = Integer.MAX_VALUE;
         JAROW bestClassifier = null;
 
         for (int i = 0; i < restarts; i++) {
             JAROW classifierWords = new JAROW();
-            Double cost = classifierWords.train(trainingWordInstances, true, true, RoboCup.rounds, param, adapt);
+            Double cost = classifierWords.train(trainingWordInstances, true, true, rounds, param, adapt);
 
             if (cost < minCost) {
                 minCost = cost;
@@ -267,42 +321,65 @@ public class JAROW implements Serializable {
 
     // the parameter here is for AROW learning
     // adapt if True is AROW, if False it is passive aggressive-II with prediction-based updates 
+
+    /**
+     *
+     * @param instances
+     * @param averaging
+     * @param shuffling
+     * @param rounds
+     * @param param
+     * @return
+     */
     public Double train(ArrayList<Instance> instances, boolean averaging, boolean shuffling, int rounds, Double param) {
         return train(instances, averaging, shuffling, rounds, param, true);
     }
 
+    /**
+     *
+     * @param instances
+     * @param averaging
+     * @param shuffling
+     * @param rounds
+     * @param param
+     * @param adapt
+     * @return
+     */
     public Double train(ArrayList<Instance> instances, boolean averaging, boolean shuffling, int rounds, Double param, boolean adapt) {
         // we first need to go through the dataset to find how many classes
 
         // Initialize the weight vectors in the beginning of training"
         // we have one variance and one weight vector per class        
-        this.param = param;
-        this.currentWeightVectors = new THashMap<>();
+        
+        this.setParam((double) param);
+        this.setCurrentWeightVectors(new THashMap<String, TObjectDoubleHashMap<String>>());
         if (adapt) {
-            this.currentVarianceVectors = new THashMap<>();
+            this.setCurrentVarianceVectors(new THashMap<String, TObjectDoubleHashMap<String>>());
         }
-        this.currentGlobalWeightVectors = new TObjectDoubleHashMap<>();
-        this.currentGlobalVarianceVectors = new TObjectDoubleHashMap<>();
-        this.averagedGlobalWeightVectors = new TObjectDoubleHashMap<>();
+        this.setCurrentGlobalWeightVectors(new TObjectDoubleHashMap<String>());
+        this.setCurrentGlobalVarianceVectors(new TObjectDoubleHashMap<String>());
+        this.setAveragedGlobalWeightVectors(new TObjectDoubleHashMap<String>());
         if (averaging) {
-            this.averagedWeightVectors = new THashMap<>();
-            averagingUpdates = 0;
+            this.setAveragedWeightVectors(new THashMap<String, TObjectDoubleHashMap<String>>());
+            this.setAveragingUpdates(0);
         }
         if (!instances.isEmpty()) {
             HashSet<String> labels = new HashSet<>();
-            for (String label : instances.get(0).getCosts().keySet()) {
-                labels.add(label);
+            for (Instance in : instances) {
+                for (String label : in.getCosts().keySet()) {
+                    labels.add(label);
+                }
             }
             for (String label : labels) {
-                this.currentWeightVectors.put(label, new TObjectDoubleHashMap<String>());
+                this.getCurrentWeightVectors().put(label, new TObjectDoubleHashMap<String>());
                 // remember: this is sparse in the sense that everything that doesn't have a value, is 1
                 // everytime we to do something with it, remember to add 1
                 if (adapt) {
-                    this.currentVarianceVectors.put(label, new TObjectDoubleHashMap<String>());
+                    this.getCurrentVarianceVectors().put(label, new TObjectDoubleHashMap<String>());
                 }
                 // keep the averaged weight vector
-                if (averaging && averagedWeightVectors != null) {
-                    averagedWeightVectors.put(label, new TObjectDoubleHashMap<String>());
+                if (averaging && this.getAveragedWeightVectors() != null) {
+                    this.getAveragedWeightVectors().put(label, new TObjectDoubleHashMap<String>());
                 }
             }
         }
@@ -310,10 +387,8 @@ public class JAROW implements Serializable {
         for (int r = 0; r < rounds; r++) {
             // shuffle
             if (shuffling) {
-                Collections.shuffle(instances, Bagel.r);
+                Collections.shuffle(instances, new Random(13));
             }
-            int errorsInRound = 0;
-            Double costInRound = 0.0;
             // for each instance
             for (Instance instance : instances) {
                 Prediction prediction = this.predict(instance);
@@ -321,15 +396,12 @@ public class JAROW implements Serializable {
                 // so if the prediction was incorrect
                 // we are no longer large margin, since we are using the loss from the cost-sensitive PA
                 if (Double.compare(instance.getCosts().get(prediction.getLabel()), 0) > 0) {
-                    errorsInRound += 1;
-                    costInRound += instance.getCosts().get(prediction.getLabel());
-
                     // first we need to get the score for the correct answer
                     // if the instance has more than one correct answer then pick the min
                     Double minCorrectLabelScore = Double.POSITIVE_INFINITY;
                     String minCorrectLabel = null;
                     for (String label : instance.getCorrectLabels()) {
-                        Double score = dotProduct(instance.getFeatureVector(label), this.getWeightVector(label));
+                        Double score = this.dotProduct(instance.getFeatureVector(label), this.getWeightVector(label));
                         if (Double.compare(score, minCorrectLabelScore) < 0) {
                             minCorrectLabelScore = score;
                             minCorrectLabel = label;
@@ -343,6 +415,7 @@ public class JAROW implements Serializable {
 
                     // the loss is the scaled margin loss also used by Mejer and Crammer 2010
                     Double loss = prediction.getScore() - minCorrectLabelScore + Math.sqrt(instance.getCosts().get(prediction.getLabel()));
+
                     //System.out.println(loss + " <> " + prediction.getScore() + " = " + minCorrectLabelScore + " = " + Math.sqrt(instance.getCosts().get(prediction.getLabel())) + " = " + instance.getCosts().get(prediction.getLabel()));
                     if (adapt) {
                         // Calculate the confidence values
@@ -353,68 +426,64 @@ public class JAROW implements Serializable {
                         for (String feature : featureVectorPredicted.keySet()) {
                             // the variance is either some value that is in the dict or just 1
                             if (!feature.startsWith("global_")) {
-                                if (currentVarianceVectors.get(prediction.getLabel()).containsKey(feature)) {
-                                    zVectorPredicted.put(feature, featureVectorPredicted.get(feature) * currentVarianceVectors.get(prediction.getLabel()).get(feature));
+                                if (this.getCurrentVarianceVectors().get(prediction.getLabel()).containsKey(feature)) {
+                                    zVectorPredicted.put(feature, featureVectorPredicted.get(feature) * this.getCurrentVarianceVectors().get(prediction.getLabel()).get(feature));
                                 } else {
                                     zVectorPredicted.put(feature, featureVectorPredicted.get(feature));
                                 }
+                            } else if (this.getCurrentGlobalVarianceVectors().containsKey(feature)) {
+                                zVectorPredicted.put(feature, featureVectorPredicted.get(feature) * this.getCurrentGlobalVarianceVectors().get(feature));
                             } else {
-                                if (currentGlobalVarianceVectors.containsKey(feature)) {
-                                    zVectorPredicted.put(feature, featureVectorPredicted.get(feature) * currentGlobalVarianceVectors.get(feature));
-                                } else {
-                                    zVectorPredicted.put(feature, featureVectorPredicted.get(feature));
-                                }
+                                zVectorPredicted.put(feature, featureVectorPredicted.get(feature));
                             }
                         }
                         TObjectDoubleHashMap<String> featureVectorMinCorrect = instance.getFeatureVector(minCorrectLabel);
                         for (String feature : featureVectorMinCorrect.keySet()) {
                             // then for the minCorrect:
                             if (!feature.startsWith("global_")) {
-                                if (currentVarianceVectors.get(minCorrectLabel).containsKey(feature)) {
-                                    zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature) * currentVarianceVectors.get(minCorrectLabel).get(feature));
+                                if (this.getCurrentVarianceVectors().get(minCorrectLabel).containsKey(feature)) {
+                                    zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature) * this.getCurrentVarianceVectors().get(minCorrectLabel).get(feature));
                                 } else {
                                     zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature));
                                 }
+                            } else if (this.getCurrentGlobalVarianceVectors().containsKey(feature)) {
+                                zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature) * this.getCurrentGlobalVarianceVectors().get(feature));
                             } else {
-                                if (currentGlobalVarianceVectors.containsKey(feature)) {
-                                    zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature) * currentGlobalVarianceVectors.get(feature));
-                                } else {
-                                    zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature));
-                                }
+                                zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature));
                             }
                         }
-                        Double confidence = dotProduct(zVectorPredicted, featureVectorPredicted) + dotProduct(zVectorMinCorrect, featureVectorMinCorrect);
+                        Double confidence = this.dotProduct(zVectorPredicted, featureVectorPredicted) + this.dotProduct(zVectorMinCorrect, featureVectorMinCorrect);
                         Double beta = 1.0 / (confidence + param);
                         Double alpha = loss * beta;
 
                         // update the current weight vectors
                         for (String feature : zVectorPredicted.keySet()) {
                             if (!feature.startsWith("global_")) {
-                                this.currentWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -(alpha * zVectorPredicted.get(feature)), -(alpha * zVectorPredicted.get(feature)));
+                                this.getCurrentWeightVectors().get(prediction.getLabel()).adjustOrPutValue(feature, -(alpha * zVectorPredicted.get(feature)), -(alpha * zVectorPredicted.get(feature)));
                             } else {
-                                this.currentGlobalWeightVectors.adjustOrPutValue(feature, -(alpha * zVectorPredicted.get(feature)), -(alpha * zVectorPredicted.get(feature)));
+                                this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, -(alpha * zVectorPredicted.get(feature)), -(alpha * zVectorPredicted.get(feature)));
                             }
                         }
                         for (String feature : zVectorMinCorrect.keySet()) {
                             if (!feature.startsWith("global_")) {
-                                this.currentWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, (alpha * zVectorMinCorrect.get(feature)), (alpha * zVectorMinCorrect.get(feature)));
+                                this.getCurrentWeightVectors().get(minCorrectLabel).adjustOrPutValue(feature, (alpha * zVectorMinCorrect.get(feature)), (alpha * zVectorMinCorrect.get(feature)));
                             } else {
-                                this.currentGlobalWeightVectors.adjustOrPutValue(feature, (alpha * zVectorMinCorrect.get(feature)), (alpha * zVectorMinCorrect.get(feature)));
+                                this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, (alpha * zVectorMinCorrect.get(feature)), (alpha * zVectorMinCorrect.get(feature)));
                             }
                         }
-                        if (averaging && averagedWeightVectors != null) {
+                        if (averaging && this.getAveragedWeightVectors() != null) {
                             for (String feature : zVectorPredicted.keySet()) {
                                 if (!feature.startsWith("global_")) {
-                                    averagedWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, (-alpha * zVectorPredicted.get(feature)), (-alpha * zVectorPredicted.get(feature)));
+                                    this.getAveragedWeightVectors().get(prediction.getLabel()).adjustOrPutValue(feature, (-alpha * zVectorPredicted.get(feature)), (-alpha * zVectorPredicted.get(feature)));
                                 } else {
-                                    averagedGlobalWeightVectors.adjustOrPutValue(feature, (-alpha * zVectorPredicted.get(feature)), (-alpha * zVectorPredicted.get(feature)));
+                                    this.getAveragedGlobalWeightVectors().adjustOrPutValue(feature, (-alpha * zVectorPredicted.get(feature)), (-alpha * zVectorPredicted.get(feature)));
                                 }
                             }
                             for (String feature : zVectorMinCorrect.keySet()) {
                                 if (!feature.startsWith("global_")) {
-                                    averagedWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
+                                    this.getAveragedWeightVectors().get(minCorrectLabel).adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
                                 } else {
-                                    averagedGlobalWeightVectors.adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
+                                    this.getAveragedGlobalWeightVectors().adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
                                 }
                             }
                         }
@@ -422,73 +491,73 @@ public class JAROW implements Serializable {
                         for (String feature : featureVectorPredicted.keySet()) {
                             // for the predicted
                             if (!feature.startsWith("global_")) {
-                                currentVarianceVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -beta * Math.pow(zVectorPredicted.get(feature), 2), 1 - beta * Math.pow(zVectorPredicted.get(feature), 2));
+                                this.getCurrentVarianceVectors().get(prediction.getLabel()).adjustOrPutValue(feature, -beta * Math.pow(zVectorPredicted.get(feature), 2), 1 - beta * Math.pow(zVectorPredicted.get(feature), 2));
                             } else {
-                                currentGlobalVarianceVectors.adjustOrPutValue(feature, -beta * Math.pow(zVectorPredicted.get(feature), 2), 1 - beta * Math.pow(zVectorPredicted.get(feature), 2));
+                                this.getCurrentGlobalVarianceVectors().adjustOrPutValue(feature, -beta * Math.pow(zVectorPredicted.get(feature), 2), 1 - beta * Math.pow(zVectorPredicted.get(feature), 2));
                             }
                         }
                         for (String feature : featureVectorMinCorrect.keySet()) {
                             // for the minCorrect
                             if (!feature.startsWith("global_")) {
-                                currentVarianceVectors.get(minCorrectLabel).adjustOrPutValue(feature, -beta * Math.pow(zVectorMinCorrect.get(feature), 2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature), 2));
+                                this.getCurrentVarianceVectors().get(minCorrectLabel).adjustOrPutValue(feature, -beta * Math.pow(zVectorMinCorrect.get(feature), 2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature), 2));
                             } else {
-                                currentGlobalVarianceVectors.adjustOrPutValue(feature, -beta * Math.pow(zVectorMinCorrect.get(feature), 2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature), 2));
+                                this.getCurrentGlobalVarianceVectors().adjustOrPutValue(feature, -beta * Math.pow(zVectorMinCorrect.get(feature), 2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature), 2));
                             }
                         }
                     } else {
                         // the squared norm is twice the square of the features since they are the same per class 
                         //The value specific features can be safely ignored since they are not shared between values and would result in 0s anyway
-                        Double norm = 2.0 * dotProduct(instance.getGeneralFeatureVector(), instance.getGeneralFeatureVector());
+                        Double norm = 2.0 * this.dotProduct(instance.getGeneralFeatureVector(), instance.getGeneralFeatureVector());
                         Double factor = loss / (norm + 1.0 / (2.0 * param));
 
                         TObjectDoubleHashMap<String> featureVectorPredicted = instance.getFeatureVector(prediction.getLabel());
                         for (String feature : featureVectorPredicted.keySet()) {
                             if (!feature.startsWith("global_")) {
-                                this.currentWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
+                                this.getCurrentWeightVectors().get(prediction.getLabel()).adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
                             } else {
-                                this.currentGlobalWeightVectors.adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
+                                this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
                             }
                         }
                         TObjectDoubleHashMap<String> featureVectorMinCorrect = instance.getFeatureVector(minCorrectLabel);
                         for (String feature : featureVectorMinCorrect.keySet()) {
                             if (!feature.startsWith("global_")) {
-                                this.currentWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
+                                this.getCurrentWeightVectors().get(minCorrectLabel).adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
                             } else {
-                                this.currentGlobalWeightVectors.adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
+                                this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
                             }
                         }
-                        if (averaging && averagedWeightVectors != null) {
+                        if (averaging && this.getAveragedWeightVectors() != null) {
                             for (String feature : featureVectorPredicted.keySet()) {
                                 if (!feature.startsWith("global_")) {
-                                    averagedWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
+                                    this.getAveragedWeightVectors().get(prediction.getLabel()).adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
                                 } else {
-                                    averagedGlobalWeightVectors.adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
+                                    this.getAveragedGlobalWeightVectors().adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
                                 }
                             }
                             for (String feature : featureVectorMinCorrect.keySet()) {
                                 if (!feature.startsWith("global_")) {
-                                    averagedWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
+                                    this.getAveragedWeightVectors().get(minCorrectLabel).adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
                                 } else {
-                                    averagedGlobalWeightVectors.adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
+                                    this.getAveragedGlobalWeightVectors().adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
                                 }
                             }
                         }
                     }
                 }
                 if (averaging) {
-                    averagingUpdates++;
+                    this.setAveragingUpdates(this.getAveragingUpdates() + 1);
                 }
             }
         }
 
-        if (averaging && averagedWeightVectors != null) {
-            for (String label : this.currentWeightVectors.keySet()) {
-                for (String feature : averagedWeightVectors.get(label).keySet()) {
-                    this.currentWeightVectors.get(label).put(feature, averagedWeightVectors.get(label).get(feature) / ((double) averagingUpdates));
+        if (averaging && this.getAveragedWeightVectors() != null) {
+            for (String label : this.getCurrentWeightVectors().keySet()) {
+                for (String feature : this.getAveragedWeightVectors().get(label).keySet()) {
+                    this.getCurrentWeightVectors().get(label).put(feature, this.getAveragedWeightVectors().get(label).get(feature) / ((double) this.getAveragingUpdates()));
                 }
             }
-            for (String feature : averagedGlobalWeightVectors.keySet()) {
-                this.currentGlobalWeightVectors.put(feature, averagedGlobalWeightVectors.get(feature) / ((double) averagingUpdates));
+            for (String feature : this.getAveragedGlobalWeightVectors().keySet()) {
+                this.getCurrentGlobalWeightVectors().put(feature, this.getAveragedGlobalWeightVectors().get(feature) / ((double) this.getAveragingUpdates()));
             }
         }
 
@@ -510,19 +579,39 @@ public class JAROW implements Serializable {
         return finalTrainingCost;
     }
 
+    /**
+     *
+     * @param instance
+     * @return
+     */
     public boolean isInstanceLeadingToFix(Instance instance) {
         Prediction prediction = this.predict(instance);
-
-        if (Double.compare(instance.getCosts().get(prediction.getLabel()), 0) > 0) {
-            return true;
-        }
-        return false;
+        return Double.compare(instance.getCosts().get(prediction.getLabel()), 0) > 0;
     }
 
+    /**
+     *
+     * @param instances
+     * @param averaging
+     * @param shuffling
+     * @param rounds
+     * @param param
+     * @return
+     */
     public Double trainAdditional(ArrayList<Instance> instances, boolean averaging, boolean shuffling, int rounds, double param) {
         return trainAdditional(instances, averaging, shuffling, rounds, true, param);
     }
 
+    /**
+     *
+     * @param instances
+     * @param averaging
+     * @param shuffling
+     * @param rounds
+     * @param adapt
+     * @param param
+     * @return
+     */
     public Double trainAdditional(ArrayList<Instance> instances, boolean averaging, boolean shuffling, int rounds, boolean adapt, double param) {
         // We do not initialize the weight vectors in the beginning of training, rather keep them as they have already been trained
 
@@ -530,13 +619,8 @@ public class JAROW implements Serializable {
         for (int r = 0; r < rounds; r++) {
             // shuffle
             if (shuffling) {
-                Collections.shuffle(instances, Bagel.r);
+                Collections.shuffle(instances, new Random(13));
             }
-            boolean flag2 = false;
-            int errorsInRound = 0;
-            Double costInRound = 0.0;
-            String checkWrong = "";
-            String checkCorrect = "";
             // for each instance
             for (Instance instance : instances) {
                 Prediction prediction = this.predict(instance);
@@ -544,26 +628,16 @@ public class JAROW implements Serializable {
                 // so if the prediction was incorrect
                 // we are no longer large margin, since we are using the loss from the cost-sensitive PA
                 if (Double.compare(instance.getCosts().get(prediction.getLabel()), 0) > 0) {
-                    errorsInRound += 1;
-                    costInRound += instance.getCosts().get(prediction.getLabel());
 
                     // first we need to get the score for the correct answer
                     // if the instance has more than one correct answer then pick the min
                     Double minCorrectLabelScore = Double.POSITIVE_INFINITY;
-                    HashMap<String, Double> correctLabels2Score = new HashMap<>();
                     String minCorrectLabel = null;
                     for (String label : instance.getCorrectLabels()) {
-                        Double score = dotProduct(instance.getFeatureVector(label), this.getWeightVector(label));
-                        correctLabels2Score.put(label, score);
+                        Double score = this.dotProduct(instance.getFeatureVector(label), this.getWeightVector(label));
                         if (Double.compare(score, minCorrectLabelScore) < 0) {
                             minCorrectLabelScore = score;
                             minCorrectLabel = label;
-                        }
-                    }
-                    HashSet<String> minCorrectLabels = new HashSet<>();
-                    for (String label : correctLabels2Score.keySet()) {
-                        if (correctLabels2Score.get(label) == minCorrectLabelScore) {
-                            minCorrectLabels.add(label);
                         }
                     }
                     if (minCorrectLabelScore == Double.POSITIVE_INFINITY) {
@@ -585,68 +659,72 @@ public class JAROW implements Serializable {
                         for (String feature : featureVectorPredicted.keySet()) {
                             // the variance is either some value that is in the dict or just 1
                             if (!feature.startsWith("global_")) {
-                                if (currentVarianceVectors.get(prediction.getLabel()).containsKey(feature)) {
-                                    zVectorPredicted.put(feature, featureVectorPredicted.get(feature) * currentVarianceVectors.get(prediction.getLabel()).get(feature));
+                                if (!this.getCurrentVarianceVectors().containsKey(minCorrectLabel)) {
+                                    System.out.println(this.getCurrentVarianceVectors().keySet());
+                                    System.out.println("S "  + minCorrectLabel);
+                                }
+                                if (this.getCurrentVarianceVectors().get(prediction.getLabel()).containsKey(feature)) {
+                                    zVectorPredicted.put(feature, featureVectorPredicted.get(feature) * this.getCurrentVarianceVectors().get(prediction.getLabel()).get(feature));
                                 } else {
                                     zVectorPredicted.put(feature, featureVectorPredicted.get(feature));
                                 }
                             } else {
-                                if (currentGlobalVarianceVectors.containsKey(feature)) {
-                                    zVectorPredicted.put(feature, featureVectorPredicted.get(feature) * currentGlobalVarianceVectors.get(feature));
+                                if (this.getCurrentGlobalVarianceVectors().containsKey(feature)) {
+                                    zVectorPredicted.put(feature, featureVectorPredicted.get(feature) * this.getCurrentGlobalVarianceVectors().get(feature));
                                 } else {
                                     zVectorPredicted.put(feature, featureVectorPredicted.get(feature));
                                 }
                             }
                         }
-                        TObjectDoubleHashMap<String> featureVectorMinCorrect = instance.getGeneralFeatureVector();
+                        TObjectDoubleHashMap<String> featureVectorMinCorrect = instance.getFeatureVector(minCorrectLabel);
                         for (String feature : featureVectorMinCorrect.keySet()) {
                             // then for the minCorrect:
                             if (!feature.startsWith("global_")) {
-                                if (currentVarianceVectors.get(minCorrectLabel).containsKey(feature)) {
-                                    zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature) * currentVarianceVectors.get(minCorrectLabel).get(feature));
+                                if (this.getCurrentVarianceVectors().get(minCorrectLabel).containsKey(feature)) {
+                                    zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature) * this.getCurrentVarianceVectors().get(minCorrectLabel).get(feature));
                                 } else {
                                     zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature));
                                 }
                             } else {
-                                if (currentGlobalVarianceVectors.containsKey(feature)) {
-                                    zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature) * currentGlobalVarianceVectors.get(feature));
+                                if (this.getCurrentGlobalVarianceVectors().containsKey(feature)) {
+                                    zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature) * this.getCurrentGlobalVarianceVectors().get(feature));
                                 } else {
                                     zVectorMinCorrect.put(feature, featureVectorMinCorrect.get(feature));
                                 }
                             }
                         }
-                        Double confidence = dotProduct(zVectorPredicted, featureVectorPredicted) + dotProduct(zVectorMinCorrect, featureVectorMinCorrect);
+                        Double confidence = this.dotProduct(zVectorPredicted, featureVectorPredicted) + this.dotProduct(zVectorMinCorrect, featureVectorMinCorrect);
                         Double beta = 1.0 / (confidence + param);
                         Double alpha = loss * beta;
 
                         // update the current weight vectors
                         for (String feature : zVectorPredicted.keySet()) {
                             if (!feature.startsWith("global_")) {
-                                this.currentWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -alpha * zVectorPredicted.get(feature), -alpha * zVectorPredicted.get(feature));
+                                this.getCurrentWeightVectors().get(prediction.getLabel()).adjustOrPutValue(feature, -alpha * zVectorPredicted.get(feature), -alpha * zVectorPredicted.get(feature));
                             } else {
-                                this.currentGlobalWeightVectors.adjustOrPutValue(feature, -alpha * zVectorPredicted.get(feature), -alpha * zVectorPredicted.get(feature));
+                                this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, -alpha * zVectorPredicted.get(feature), -alpha * zVectorPredicted.get(feature));
                             }
                         }
                         for (String feature : zVectorMinCorrect.keySet()) {
                             if (!feature.startsWith("global_")) {
-                                this.currentWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
+                                this.getCurrentWeightVectors().get(minCorrectLabel).adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
                             } else {
-                                this.currentGlobalWeightVectors.adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
+                                this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
                             }
                         }
-                        if (averaging && averagedWeightVectors != null) {
+                        if (averaging && this.getAveragedWeightVectors() != null) {
                             for (String feature : zVectorPredicted.keySet()) {
                                 if (!feature.startsWith("global_")) {
-                                    averagedWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, (-alpha * zVectorPredicted.get(feature)), (-alpha * zVectorPredicted.get(feature)));
+                                    this.getAveragedWeightVectors().get(prediction.getLabel()).adjustOrPutValue(feature, (-alpha * zVectorPredicted.get(feature)), (-alpha * zVectorPredicted.get(feature)));
                                 } else {
-                                    averagedGlobalWeightVectors.adjustOrPutValue(feature, (-alpha * zVectorPredicted.get(feature)), (-alpha * zVectorPredicted.get(feature)));
+                                    this.getAveragedGlobalWeightVectors().adjustOrPutValue(feature, (-alpha * zVectorPredicted.get(feature)), (-alpha * zVectorPredicted.get(feature)));
                                 }
                             }
                             for (String feature : zVectorMinCorrect.keySet()) {
                                 if (!feature.startsWith("global_")) {
-                                    averagedWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
+                                    this.getAveragedWeightVectors().get(minCorrectLabel).adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
                                 } else {
-                                    averagedGlobalWeightVectors.adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
+                                    this.getAveragedGlobalWeightVectors().adjustOrPutValue(feature, alpha * zVectorMinCorrect.get(feature), alpha * zVectorMinCorrect.get(feature));
                                 }
                             }
                         }
@@ -654,89 +732,89 @@ public class JAROW implements Serializable {
                         for (String feature : featureVectorPredicted.keySet()) {
                             // for the predicted
                             if (!feature.startsWith("global_")) {
-                                currentVarianceVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -beta * Math.pow(zVectorPredicted.get(feature), 2), 1 - beta * Math.pow(zVectorPredicted.get(feature), 2));
+                                this.getCurrentVarianceVectors().get(prediction.getLabel()).adjustOrPutValue(feature, -beta * Math.pow(zVectorPredicted.get(feature), 2), 1 - beta * Math.pow(zVectorPredicted.get(feature), 2));
                             } else {
-                                currentGlobalVarianceVectors.adjustOrPutValue(feature, -beta * Math.pow(zVectorPredicted.get(feature), 2), 1 - beta * Math.pow(zVectorPredicted.get(feature), 2));
+                                this.getCurrentGlobalVarianceVectors().adjustOrPutValue(feature, -beta * Math.pow(zVectorPredicted.get(feature), 2), 1 - beta * Math.pow(zVectorPredicted.get(feature), 2));
                             }
                         }
                         for (String feature : featureVectorMinCorrect.keySet()) {
                             // for the minCorrect
                             if (!feature.startsWith("global_")) {
-                                currentVarianceVectors.get(minCorrectLabel).adjustOrPutValue(feature, -beta * Math.pow(zVectorMinCorrect.get(feature), 2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature), 2));
+                                this.getCurrentVarianceVectors().get(minCorrectLabel).adjustOrPutValue(feature, -beta * Math.pow(zVectorMinCorrect.get(feature), 2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature), 2));
                             } else {
-                                currentGlobalVarianceVectors.adjustOrPutValue(feature, -beta * Math.pow(zVectorMinCorrect.get(feature), 2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature), 2));
+                                this.getCurrentGlobalVarianceVectors().adjustOrPutValue(feature, -beta * Math.pow(zVectorMinCorrect.get(feature), 2), 1 - beta * Math.pow(zVectorMinCorrect.get(feature), 2));
                             }
                         }
-                        for (String s : currentVarianceVectors.get(prediction.getLabel()).keySet()) {
-                            if (currentVarianceVectors.get(prediction.getLabel()).get(s) < 0) {
-                                System.out.println(currentVarianceVectors.get(prediction.getLabel()));
+                        for (String s : this.getCurrentVarianceVectors().get(prediction.getLabel()).keySet()) {
+                            if (this.getCurrentVarianceVectors().get(prediction.getLabel()).get(s) < 0) {
+                                System.out.println(this.getCurrentVarianceVectors().get(prediction.getLabel()));
                             }
                         }
-                        for (String s : currentVarianceVectors.get(minCorrectLabel).keySet()) {
-                            if (currentVarianceVectors.get(minCorrectLabel).get(s) < 0) {
-                                System.out.println(currentVarianceVectors.get(minCorrectLabel));
+                        for (String s : this.getCurrentVarianceVectors().get(minCorrectLabel).keySet()) {
+                            if (this.getCurrentVarianceVectors().get(minCorrectLabel).get(s) < 0) {
+                                System.out.println(this.getCurrentVarianceVectors().get(minCorrectLabel));
                             }
                         }
-                        for (String s : currentGlobalVarianceVectors.keySet()) {
-                            if (currentGlobalVarianceVectors.get(s) < 0) {
-                                System.out.println(currentGlobalVarianceVectors);
+                        for (String s : this.getCurrentGlobalVarianceVectors().keySet()) {
+                            if (this.getCurrentGlobalVarianceVectors().get(s) < 0) {
+                                System.out.println(this.getCurrentGlobalVarianceVectors());
                             }
                         }
                     } else {
                         // the squared norm is twice the square of the features since they are the same per class 
-                        Double norm = 2.0 * dotProduct(instance.getGeneralFeatureVector(), instance.getGeneralFeatureVector());
+                        Double norm = 2.0 * this.dotProduct(instance.getGeneralFeatureVector(), instance.getGeneralFeatureVector());
                         Double factor = loss / (norm + 1.0 / (2.0 * param));
 
                         TObjectDoubleHashMap<String> featureVectorPredicted = instance.getFeatureVector(prediction.getLabel());
                         for (String feature : featureVectorPredicted.keySet()) {
                             if (!feature.startsWith("global_")) {
-                                this.currentWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
+                                this.getCurrentWeightVectors().get(prediction.getLabel()).adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
                             } else {
-                                this.currentGlobalWeightVectors.adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
+                                this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
                             }
                         }
 
                         TObjectDoubleHashMap<String> featureVectorMinCorrect = instance.getFeatureVector(minCorrectLabel);
                         for (String feature : featureVectorMinCorrect.keySet()) {
                             if (!feature.startsWith("global_")) {
-                                this.currentWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
+                                this.getCurrentWeightVectors().get(minCorrectLabel).adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
                             } else {
-                                this.currentGlobalWeightVectors.adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
+                                this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
                             }
                         }
-                        if (averaging && averagedWeightVectors != null) {
+                        if (averaging && this.getAveragedWeightVectors() != null) {
                             for (String feature : featureVectorPredicted.keySet()) {
                                 if (!feature.startsWith("global_")) {
-                                    averagedWeightVectors.get(prediction.getLabel()).adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
+                                    this.getAveragedWeightVectors().get(prediction.getLabel()).adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
                                 } else {
-                                    averagedGlobalWeightVectors.adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
+                                    this.getAveragedGlobalWeightVectors().adjustOrPutValue(feature, -factor * featureVectorPredicted.get(feature), -factor * featureVectorPredicted.get(feature));
                                 }
                             }
                             for (String feature : featureVectorMinCorrect.keySet()) {
                                 if (!feature.startsWith("global_")) {
-                                    averagedWeightVectors.get(minCorrectLabel).adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
+                                    this.getAveragedWeightVectors().get(minCorrectLabel).adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
                                 } else {
-                                    averagedGlobalWeightVectors.adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
+                                    this.getAveragedGlobalWeightVectors().adjustOrPutValue(feature, factor * featureVectorMinCorrect.get(feature), factor * featureVectorMinCorrect.get(feature));
                                 }
                             }
                         }
                     }
                 }
                 if (averaging) {
-                    averagingUpdates++;
+                    this.setAveragingUpdates(this.getAveragingUpdates() + 1);
                 }
             }
             //System.out.println("Training error rate in round " + r + " : " + (double) errorsInRound / (double) instances.size());
         }
 
-        if (averaging && averagedWeightVectors != null) {
-            for (String label : this.currentWeightVectors.keySet()) {
-                for (String feature : averagedWeightVectors.get(label).keySet()) {
-                    this.currentWeightVectors.get(label).put(feature, averagedWeightVectors.get(label).get(feature) / ((double) averagingUpdates));
+        if (averaging && this.getAveragedWeightVectors() != null) {
+            for (String label : this.getCurrentWeightVectors().keySet()) {
+                for (String feature : this.getAveragedWeightVectors().get(label).keySet()) {
+                    this.getCurrentWeightVectors().get(label).put(feature, this.getAveragedWeightVectors().get(label).get(feature) / ((double) this.getAveragingUpdates()));
                 }
             }
-            for (String feature : averagedGlobalWeightVectors.keySet()) {
-                this.currentGlobalWeightVectors.put(feature, averagedGlobalWeightVectors.get(feature) / ((double) averagingUpdates));
+            for (String feature : this.getAveragedGlobalWeightVectors().keySet()) {
+                this.getCurrentGlobalWeightVectors().put(feature, this.getAveragedGlobalWeightVectors().get(feature) / ((double) this.getAveragingUpdates()));
             }
         }
 
@@ -758,23 +836,27 @@ public class JAROW implements Serializable {
         return finalTrainingCost;
     }
 
+    /**
+     *
+     * @param classifiers
+     */
     public void averageOverClassifiers(ArrayList<JAROW> classifiers) {
         if (!classifiers.isEmpty()) {
             for (String label : classifiers.get(0).getCurrentWeightVectors().keySet()) {
-                this.currentWeightVectors.put(label, new TObjectDoubleHashMap<String>());
+                this.getCurrentWeightVectors().put(label, new TObjectDoubleHashMap<String>());
             }
-            this.currentGlobalWeightVectors = new TObjectDoubleHashMap<>();
+            this.setCurrentGlobalWeightVectors(new TObjectDoubleHashMap<String>());
 
             HashMap<String, HashMap<String, Integer>> updates = new HashMap<>();
             HashMap<String, Integer> globalUpdates = new HashMap<>();
             for (JAROW classifier : classifiers) {
-                this.param = classifier.getParam();
+                this.setParam(classifier.getParam());
                 for (String label : classifier.getCurrentWeightVectors().keySet()) {
                     if (!updates.containsKey(label)) {
                         updates.put(label, new HashMap<String, Integer>());
                     }
                     for (String feature : classifier.getCurrentWeightVectors().get(label).keySet()) {
-                        this.currentWeightVectors.get(label).adjustOrPutValue(feature, classifier.getCurrentWeightVectors().get(label).get(feature), classifier.getCurrentWeightVectors().get(label).get(feature));
+                        this.getCurrentWeightVectors().get(label).adjustOrPutValue(feature, classifier.getCurrentWeightVectors().get(label).get(feature), classifier.getCurrentWeightVectors().get(label).get(feature));
                         if (updates.get(label).containsKey(feature)) {
                             updates.get(label).put(feature, updates.get(label).get(feature) + 1);
                         } else {                        
@@ -783,7 +865,7 @@ public class JAROW implements Serializable {
                     }
                 }
                 for (String feature : classifier.getCurrentGlobalWeightVectors().keySet()) {
-                    this.currentGlobalWeightVectors.adjustOrPutValue(feature, classifier.getCurrentGlobalWeightVectors().get(feature), classifier.getCurrentGlobalWeightVectors().get(feature));
+                    this.getCurrentGlobalWeightVectors().adjustOrPutValue(feature, classifier.getCurrentGlobalWeightVectors().get(feature), classifier.getCurrentGlobalWeightVectors().get(feature));
                     if (globalUpdates.containsKey(feature)) {
                         globalUpdates.put(feature, globalUpdates.get(feature) + 1);
                     } else {                        
@@ -792,84 +874,116 @@ public class JAROW implements Serializable {
                 }
             } 
 
-            for (String label : this.currentWeightVectors.keySet()) {
-                for (String feature : this.currentWeightVectors.get(label).keySet()) {
+            for (String label : this.getCurrentWeightVectors().keySet()) {
+                for (String feature : this.getCurrentWeightVectors().get(label).keySet()) {
                     double currentWeightUpdates = (double) updates.get(label).get(feature);
-                    this.currentWeightVectors.get(label).put(feature, this.currentWeightVectors.get(label).get(feature) * (1.0 / currentWeightUpdates));
+                    this.getCurrentWeightVectors().get(label).put(feature, this.getCurrentWeightVectors().get(label).get(feature) * (1.0 / currentWeightUpdates));
                 }
             }
-            for (String feature : this.currentGlobalWeightVectors.keySet()) {
+            for (String feature : this.getCurrentGlobalWeightVectors().keySet()) {
                 double currentGlobalWeightUpdates = (double) globalUpdates.get(feature);
-                this.currentGlobalWeightVectors.put(feature, this.currentGlobalWeightVectors.get(feature) * (1.0 / currentGlobalWeightUpdates));
+                this.getCurrentGlobalWeightVectors().put(feature, this.getCurrentGlobalWeightVectors().get(feature) * (1.0 / currentGlobalWeightUpdates));
             }
         }
     }
 
+    /**
+     *
+     */
     public void probGeneration() {
         probGeneration(1.0, 100);
     }
 
+    /**
+     *
+     * @param scale
+     */
     public void probGeneration(Double scale) {
         probGeneration(scale, 100);
     }
 
+    /**
+     *
+     * @param noWeightVectors
+     */
     public void probGeneration(int noWeightVectors) {
         probGeneration(1.0, noWeightVectors);
     }
 
+    /**
+     *
+     * @param scale
+     * @param noWeightVectors
+     */
     public void probGeneration(Double scale, int noWeightVectors) {
         // initialize the weight vectors
         System.out.println("Generating samples for the weight vectors to obtain probability estimates");
-        this.probWeightVectors = new ArrayList<>();
+        this.setProbWeightVectors(new ArrayList<THashMap<String, TObjectDoubleHashMap<String>>>());
         for (int i = 0; i < noWeightVectors; i++) {
-            this.probWeightVectors.add(new THashMap<String, TObjectDoubleHashMap<String>>());
-            for (String label : this.currentWeightVectors.keySet()) {
-                this.probWeightVectors.get(i).put(label, new TObjectDoubleHashMap<String>());
+            this.getProbWeightVectors().add(new THashMap<String, TObjectDoubleHashMap<String>>());
+            for (String label : this.getCurrentWeightVectors().keySet()) {
+                this.getProbWeightVectors().get(i).put(label, new TObjectDoubleHashMap<String>());
             }
         }
 
         RandomGaussian gaussian = new RandomGaussian();
-        for (String label : this.currentWeightVectors.keySet()) {
+        for (String label : this.getCurrentWeightVectors().keySet()) {
             // We are ignoring features that never got their weight set 
-            for (String feature : this.currentWeightVectors.keySet()) {
+            for (String feature : this.getCurrentWeightVectors().keySet()) {
                 // note that if the weight was updated, then the variance must have been updated too, i.e. we shouldn't have 0s
                 ArrayList<Double> weights = new ArrayList<>();
 
                 for (int i = 0; i < noWeightVectors; i++) {
-                    weights.add(gaussian.getGaussian(this.currentWeightVectors.get(label).get(feature), scale * this.currentVarianceVectors.get(label).get(feature)));
+                    weights.add(gaussian.getGaussian(this.getCurrentWeightVectors().get(label).get(feature), scale * this.getCurrentVarianceVectors().get(label).get(feature)));
                 }
                 // we got the samples, now let's put them in the right places
                 for (int i = 0; i < weights.size(); i++) {
-                    this.probWeightVectors.get(i).get(label).put(feature, weights.get(i));
+                    this.getProbWeightVectors().get(i).get(label).put(feature, weights.get(i));
                 }
             }
         }
-        for (String label : this.currentGlobalWeightVectors.keySet()) {
+        for (String label : this.getCurrentGlobalWeightVectors().keySet()) {
             // We are ignoring features that never got their weight set 
-            for (String feature : this.currentGlobalWeightVectors.keySet()) {
+            for (String feature : this.getCurrentGlobalWeightVectors().keySet()) {
                 // note that if the weight was updated, then the variance must have been updated too, i.e. we shouldn't have 0s
                 ArrayList<Double> weights = new ArrayList<>();
 
                 for (int i = 0; i < noWeightVectors; i++) {
-                    weights.add(gaussian.getGaussian(this.currentGlobalWeightVectors.get(feature), scale * this.currentGlobalVarianceVectors.get(feature)));
+                    weights.add(gaussian.getGaussian(this.getCurrentGlobalWeightVectors().get(feature), scale * this.getCurrentGlobalVarianceVectors().get(feature)));
                 }
                 // we got the samples, now let's put them in the right places
                 for (int i = 0; i < weights.size(); i++) {
-                    this.probWeightVectors.get(i).get(label).put(feature, weights.get(i));
+                    this.getProbWeightVectors().get(i).get(label).put(feature, weights.get(i));
                 }
             }
         }
 
         System.out.println("done");
-        this.probabilities = true;
+        this.setProbabilities(true);
     }
 
     // train by optimizing the c parametr
+
+    /**
+     *
+     * @param instances
+     * @return
+     */
     public static JAROW trainOpt(ArrayList<Instance> instances) {
         Double[] params = {0.01, 0.1, 1.0, 10.0, 100.0};
         return trainOpt(instances, 10, params, 0.1, true, false);
     }
 
+    /**
+     *
+     * @param instances
+     * @param rounds
+     * @param paramValues
+     * @param heldout
+     * @param adapt
+     * @param optimizeProbs
+     * @return
+     */
     public static JAROW trainOpt(ArrayList<Instance> instances, int rounds, Double[] paramValues, Double heldout, boolean adapt, boolean optimizeProbs) {
         System.out.println("===Training with " + instances.size() + " instances===");
 
@@ -941,6 +1055,13 @@ public class JAROW implements Serializable {
     }
 
     // save function for the parameters:
+
+    /**
+     *
+     * @param classifier
+     * @param filename
+     * @throws IOException
+     */
     public static void save(JAROW classifier, String filename) throws IOException {
         FileOutputStream fout = new FileOutputStream(filename);
         ObjectOutputStream oos = new ObjectOutputStream(fout);
@@ -950,6 +1071,14 @@ public class JAROW implements Serializable {
     }
 
     // load function for the parameters:
+
+    /**
+     *
+     * @param filename
+     * @return
+     * @throws IOException
+     * @throws ClassNotFoundException
+     */
     public static JAROW load(String filename) throws IOException, ClassNotFoundException {
         FileInputStream fin = new FileInputStream(filename);
         ObjectInputStream ois = new ObjectInputStream(fin);
@@ -960,27 +1089,18 @@ public class JAROW implements Serializable {
         return classifier;
     }
 
+    /**
+     *
+     * @param a1
+     * @param a2
+     * @return
+     */
     public Double dotProduct(TObjectDoubleHashMap<String> a1, TObjectDoubleHashMap<String> a2) {
-        //BigDecimal product = BigDecimal.ZERO;
         Double product = 0.0;
         for (String label : a1.keySet()) {
             if (a2.contains(label)) {
                 Double v1 = a1.get(label);
-                if (v1 == Double.POSITIVE_INFINITY) {
-                    v1 = Double.MAX_VALUE;
-                    System.exit(0);
-                } else if (v1 == Double.NEGATIVE_INFINITY) {
-                    v1 = -Double.MAX_VALUE;
-                    System.exit(0);
-                }
                 Double v2 = a2.get(label);
-                if (v2 == Double.POSITIVE_INFINITY) {
-                    v2 = Double.MAX_VALUE;
-                    System.exit(0);
-                } else if (v2 == Double.NEGATIVE_INFINITY) {
-                    v2 = -Double.MAX_VALUE;
-                    System.exit(0);
-                }
                 try {
                     product += v1 * v2;
                 } catch (java.lang.NumberFormatException io) {
@@ -997,27 +1117,163 @@ public class JAROW implements Serializable {
         return product.doubleValue();
     }
 
+    /**
+     *
+     * @return
+     */
     public boolean isProbabilities() {
         return probabilities;
     }
 
+    /**
+     *
+     * @return
+     */
     public THashMap<String, TObjectDoubleHashMap<String>> getCurrentWeightVectors() {
         return currentWeightVectors;
     }
 
+    /**
+     *
+     * @return
+     */
     public TObjectDoubleHashMap<String> getCurrentGlobalWeightVectors() {
         return currentGlobalWeightVectors;
     }
 
+    /**
+     *
+     * @return
+     */
     public THashMap<String, TObjectDoubleHashMap<String>> getCurrentVarianceVectors() {
         return currentVarianceVectors;
     }
 
+    /**
+     *
+     * @return
+     */
     public ArrayList<THashMap<String, TObjectDoubleHashMap<String>>> getProbWeightVectors() {
         return probWeightVectors;
     }
 
+    /**
+     *
+     * @return
+     */
     public double getParam() {
         return param;
+    }
+
+    /**
+     * @param probabilities the probabilities to set
+     */
+    public void setProbabilities(boolean probabilities) {
+        this.probabilities = probabilities;
+    }
+
+    /**
+     * @param currentWeightVectors the currentWeightVectors to set
+     */
+    public void setCurrentWeightVectors(THashMap<String, TObjectDoubleHashMap<String>> currentWeightVectors) {
+        this.currentWeightVectors = currentWeightVectors;
+    }
+
+    /**
+     * @param currentVarianceVectors the currentVarianceVectors to set
+     */
+    public void setCurrentVarianceVectors(THashMap<String, TObjectDoubleHashMap<String>> currentVarianceVectors) {
+        this.currentVarianceVectors = currentVarianceVectors;
+    }
+
+    /**
+     * @param probWeightVectors the probWeightVectors to set
+     */
+    public void setProbWeightVectors(ArrayList<THashMap<String, TObjectDoubleHashMap<String>>> probWeightVectors) {
+        this.probWeightVectors = probWeightVectors;
+    }
+
+    /**
+     * @return the averagedWeightVectors
+     */
+    public THashMap<String, TObjectDoubleHashMap<String>> getAveragedWeightVectors() {
+        return averagedWeightVectors;
+    }
+
+    /**
+     * @param averagedWeightVectors the averagedWeightVectors to set
+     */
+    public void setAveragedWeightVectors(THashMap<String, TObjectDoubleHashMap<String>> averagedWeightVectors) {
+        this.averagedWeightVectors = averagedWeightVectors;
+    }
+
+    /**
+     * @param currentGlobalWeightVectors the currentGlobalWeightVectors to set
+     */
+    public void setCurrentGlobalWeightVectors(TObjectDoubleHashMap<String> currentGlobalWeightVectors) {
+        this.currentGlobalWeightVectors = currentGlobalWeightVectors;
+    }
+
+    /**
+     * @return the currentGlobalVarianceVectors
+     */
+    public TObjectDoubleHashMap<String> getCurrentGlobalVarianceVectors() {
+        return currentGlobalVarianceVectors;
+    }
+
+    /**
+     * @param currentGlobalVarianceVectors the currentGlobalVarianceVectors to set
+     */
+    public void setCurrentGlobalVarianceVectors(TObjectDoubleHashMap<String> currentGlobalVarianceVectors) {
+        this.currentGlobalVarianceVectors = currentGlobalVarianceVectors;
+    }
+
+    /**
+     * @return the probGlobalWeightVectors
+     */
+    public ArrayList<TObjectDoubleHashMap<String>> getProbGlobalWeightVectors() {
+        return probGlobalWeightVectors;
+    }
+
+    /**
+     * @param probGlobalWeightVectors the probGlobalWeightVectors to set
+     */
+    public void setProbGlobalWeightVectors(ArrayList<TObjectDoubleHashMap<String>> probGlobalWeightVectors) {
+        this.probGlobalWeightVectors = probGlobalWeightVectors;
+    }
+
+    /**
+     * @return the averagedGlobalWeightVectors
+     */
+    public TObjectDoubleHashMap<String> getAveragedGlobalWeightVectors() {
+        return averagedGlobalWeightVectors;
+    }
+
+    /**
+     * @param averagedGlobalWeightVectors the averagedGlobalWeightVectors to set
+     */
+    public void setAveragedGlobalWeightVectors(TObjectDoubleHashMap<String> averagedGlobalWeightVectors) {
+        this.averagedGlobalWeightVectors = averagedGlobalWeightVectors;
+    }
+
+    /**
+     * @return the averagingUpdates
+     */
+    public int getAveragingUpdates() {
+        return averagingUpdates;
+    }
+
+    /**
+     * @param averagingUpdates the averagingUpdates to set
+     */
+    public void setAveragingUpdates(int averagingUpdates) {
+        this.averagingUpdates = averagingUpdates;
+    }
+
+    /**
+     * @param param the param to set
+     */
+    public void setParam(double param) {
+        this.param = param;
     }
 }

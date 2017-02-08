@@ -20,6 +20,10 @@ import gnu.trove.map.hash.TObjectDoubleHashMap;
 import java.util.ArrayList;
 import java.util.HashSet;
 
+/**
+ *
+ * @author Gerasimos Lampouras
+ */
 public class Prediction {
     
     private TObjectDoubleHashMap<String> label2score;
@@ -31,6 +35,9 @@ public class Prediction {
     
     private HashSet<String> mostInfluencialFeatures;
     
+    /**
+     *
+     */
     public Prediction() {        
         this.label2score = new TObjectDoubleHashMap<>();
         this.score = Double.NEGATIVE_INFINITY;
@@ -40,58 +47,114 @@ public class Prediction {
         this.entropy = 0.0;
     }
 
+    /**
+     *
+     * @return
+     */
     public TObjectDoubleHashMap<String> getLabel2Score() {
         return label2score;
     }
 
+    /**
+     *
+     * @param label2score
+     */
     public void setLabel2score(TObjectDoubleHashMap<String> label2score) {
         this.label2score = label2score;
     }
 
+    /**
+     *
+     * @return
+     */
     public HashSet<String> getMostInfluencialFeatures() {
         return mostInfluencialFeatures;
     }
 
+    /**
+     *
+     * @param mostInfluencialFeatures
+     */
     public void setMostInfluencialFeatures(HashSet<String> mostInfluencialFeatures) {
         this.mostInfluencialFeatures = mostInfluencialFeatures;
     }
 
+    /**
+     *
+     * @return
+     */
     public Double getScore() {
         return score;
     }
 
+    /**
+     *
+     * @param score
+     */
     public void setScore(Double score) {
         this.score = score;
     }
 
+    /**
+     *
+     * @return
+     */
     public String getLabel() {
         return label;
     }
 
+    /**
+     *
+     * @param label
+     */
     public void setLabel(String label) {
         this.label = label;
     }
 
+    /**
+     *
+     * @return
+     */
     public ArrayList<ArrayList<Object>> getFeatureValueWeights() {
         return featureValueWeights;
     }
 
+    /**
+     *
+     * @param featureValueWeights
+     */
     public void setFeatureValueWeights(ArrayList<ArrayList<Object>> featureValueWeights) {
         this.featureValueWeights = featureValueWeights;
     }
 
+    /**
+     *
+     * @return
+     */
     public TObjectDoubleHashMap<String> getLabel2prob() {
         return label2prob;
     }
 
+    /**
+     *
+     * @param label2prob
+     */
     public void setLabel2prob(TObjectDoubleHashMap<String> label2prob) {
         this.label2prob = label2prob;
     }
 
+    /**
+     *
+     * @return
+     */
     public Double getEntropy() {
         return entropy;
     }
 
+    /**
+     *
+     * @param entropy
+     */
     public void setEntropy(Double entropy) {
         this.entropy = entropy;
     }

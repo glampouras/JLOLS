@@ -19,12 +19,23 @@ package jarow;
 import gnu.trove.map.hash.TObjectDoubleHashMap;
 import gnu.trove.map.hash.TObjectIntHashMap;
 import gnu.trove.set.hash.THashSet;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 
 // the instances consist of a HashMap of labels to costs and feature vectors (Huang-style)
-public class Instance {
+/**
+ * @author Gerasimos Lampouras
+ */
+public class Instance implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
+    /**
+     *
+     * @param instances
+     * @return
+     */
     public static ArrayList<Instance> removeHapaxLegomena(ArrayList<Instance> instances) {
         System.out.println("Counting features");
 
@@ -82,10 +93,21 @@ public class Instance {
     private THashSet<String> worstLabels;
     private THashSet<String> correctLabels;
 
+    /**
+     *
+     * @param generalFeatureVector
+     * @param valueSpecificFeatureVector
+     */
     public Instance(TObjectDoubleHashMap<String> generalFeatureVector, HashMap<String, TObjectDoubleHashMap<String>> valueSpecificFeatureVector) {
         this(generalFeatureVector, valueSpecificFeatureVector, null);
     }
 
+    /**
+     *
+     * @param generalFeatureVector
+     * @param valueSpecificFeatureVector
+     * @param costs
+     */
     public Instance(TObjectDoubleHashMap<String> generalFeatureVector, HashMap<String, TObjectDoubleHashMap<String>> valueSpecificFeatureVector, TObjectDoubleHashMap<String> costs) {
         this.generalFeatureVector = generalFeatureVector;
         this.valueSpecificFeatureVector = valueSpecificFeatureVector;
@@ -131,6 +153,10 @@ public class Instance {
         }
     }
 
+    /**
+     *
+     * @return
+     */
     @Override
     public String toString() {
         String retString = "";
@@ -173,45 +199,59 @@ public class Instance {
         return retString;
     }
 
+    /**
+     *
+     * @return
+     */
     public TObjectDoubleHashMap<String> getGeneralFeatureVector() {
         return generalFeatureVector;
     }
 
+    /**
+     *
+     * @return
+     */
     public HashMap<String, TObjectDoubleHashMap<String>> getValueSpecificFeatureVector() {
         return valueSpecificFeatureVector;
     }
 
+    /**
+     *
+     * @param label
+     * @return
+     */
     public TObjectDoubleHashMap<String> getFeatureVector(String label) {
         TObjectDoubleHashMap<String> featureVector = new TObjectDoubleHashMap<>();
         featureVector.putAll(getGeneralFeatureVector());
-        if (getValueSpecificFeatureVector() != null) {
-            if (getValueSpecificFeatureVector().containsKey(label)) {
-                featureVector.putAll(getValueSpecificFeatureVector().get(label));
-            }
+        if (getValueSpecificFeatureVector() != null
+                && getValueSpecificFeatureVector().containsKey(label)) {
+            featureVector.putAll(getValueSpecificFeatureVector().get(label));
         }
 
         return featureVector;
     }
 
+    /**
+     *
+     * @return
+     */
     public TObjectDoubleHashMap<String> getCosts() {
         return costs;
     }
 
+    /**
+     *
+     * @return
+     */
     public Double getMaxCost() {
         return maxCost;
     }
 
+    /**
+     *
+     * @return
+     */
     public THashSet<String> getCorrectLabels() {
         return correctLabels;
-    }
-
-    ArrayList<String> alignedSubRealizations;
-
-    public ArrayList<String> getAlignedSubRealizations() {
-        return alignedSubRealizations;
-    }
-
-    public void setAlignedSubRealizations(ArrayList<String> alignedSubRealizations) {
-        this.alignedSubRealizations = alignedSubRealizations;
     }
 }

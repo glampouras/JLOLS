@@ -28,7 +28,11 @@ import java.util.Random;
 
 public final class RandomGaussian {
   
-  public static void main(String... aArgs){
+    /**
+     *
+     * @param aArgs
+     */
+    public static void main(String... aArgs){
     RandomGaussian gaussian = new RandomGaussian();
     double MEAN = 100.0f; 
     double VARIANCE = 5.0f;
@@ -37,10 +41,16 @@ public final class RandomGaussian {
     }
   }
     
-  private Random fRandom = new Random();
+  private Random randomGen = new Random();
   
-  public double getGaussian(double aMean, double aVariance){
-    return aMean + fRandom.nextGaussian() * aVariance;
+    /**
+     *
+     * @param aMean
+     * @param aVariance
+     * @return
+     */
+    public double getGaussian(double aMean, double aVariance){
+    return aMean + randomGen.nextGaussian() * aVariance;
   }
 
   private static void log(Object aMsg){
