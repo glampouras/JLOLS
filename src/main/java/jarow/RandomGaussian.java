@@ -17,16 +17,11 @@
 package jarow;
 
 import java.util.Random;
+import java.util.logging.Logger;
 
-/** 
- Generate pseudo-random floating point values, with an 
- approximately Gaussian (normal) distribution.
 
- Many physical measurements have an approximately Gaussian 
- distribution; this provides a way of simulating such values. 
-*/
 
-public final class RandomGaussian {
+public class RandomGaussian {
   
     /**
      *
@@ -41,7 +36,7 @@ public final class RandomGaussian {
     }
   }
     
-  private Random randomGen = new Random();
+  private final Random randomGen = new Random();
   
     /**
      *
@@ -54,6 +49,6 @@ public final class RandomGaussian {
   }
 
   private static void log(Object aMsg){
-    System.out.println(String.valueOf(aMsg));
   }
+    private static final Logger LOG = Logger.getLogger(RandomGaussian.class.getName());
 } 

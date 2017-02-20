@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package imitationNLG;
+package structuredPredictionNLG;
 
 import edu.stanford.nlp.mt.metrics.BLEUMetric;
 import edu.stanford.nlp.mt.metrics.NISTMetric;
@@ -39,21 +39,21 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import jdagger.JLOLS;
+import imitationLearning.JLOLS;
+import imitationLearning.LossFunction;
 import similarity_measures.Levenshtein;
 import similarity_measures.Rouge;
 import simpleLM.SimpleLM;
 
-/**
- *
- * @author Gerasimos Lampouras
- */
+
 public class Bagel extends DatasetParser {
 
     HashMap<String, HashSet<String>> availableAttributeActions = new HashMap<>();
@@ -63,11 +63,6 @@ public class Bagel extends DatasetParser {
     HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments = new HashMap<>();
     HashMap<ArrayList<Action>, Action> punctuationPatterns = new HashMap<>();
     ArrayList<String> predicates = new ArrayList<>();
-
-    /**
-     *
-     */
-    public ArrayList<Double> crossAvgArgDistances = new ArrayList<>();
 
     /**
      *
@@ -103,7 +98,7 @@ public class Bagel extends DatasetParser {
         boolean useLolsWord = true;
 
         fold = Integer.parseInt(args[0]);
-        JLOLS.earlyStopMaxFurtherSteps = Integer.parseInt(args[1]);
+        JLOLS.sentenceCorrectionFurtherSteps = Integer.parseInt(args[1]);
         JLOLS.p = Double.parseDouble(args[2]);
 
         if (!args[3].isEmpty()
@@ -113,8 +108,7 @@ public class Bagel extends DatasetParser {
                 || args[3].equals("RC")
                 || args[3].equals("BRC")
                 || args[3].equals("BR"))) {
-            System.out.println("Using " + args[3] + " metric!");
-            ActionSequence.metric = args[3];
+            LossFunction.metric = args[3];
         }
 
         Bagel bagel = new Bagel();
@@ -140,27 +134,28 @@ public class Bagel extends DatasetParser {
         dataset = "Bagel";
 
         detailedResults = false;
-        resetLists = true;
+        resetStoredCaches = true;
 
         File dataFile = new File("bagel_data/ACL10-inform-training.txt");
 
-        if (resetLists || !loadLists()) {
+        if (resetStoredCaches || !loadLists()) {
             createLists(dataFile);
         }
         /*int counter = 0;
         for (String predicate : predicates) {
-            ArrayList<DatasetInstance> datasetInstances = new ArrayList(this.datasetInstances.get(predicate));
-            for (DatasetInstance in : datasetInstances) {
-                System.out.println("BAGEL-" + counter + " \tinform(" + in.getMeaningRepresentation().getMRstr().replaceAll("X1", "X").replaceAll("X2", "X").replaceAll("X3", "X").replaceAll("X4", "X") +")");
-                counter++;
-            }
+        ArrayList<DatasetInstance> datasetInstances = new ArrayList(this.datasetInstances.get(predicate));
+        for (DatasetInstance in : datasetInstances) {
+        System.out.println("BAGEL-" + counter + " \tinform(" + in.getMeaningRepresentation().getMRstr().replaceAll("X1", "X").replaceAll("X2", "X").replaceAll("X3", "X").replaceAll("X4", "X") +")");
+        counter++;
+        }
         }
         System.exit(0);*/
-        for (String predicate : predicates) {
+        predicates.stream().map((predicate) -> {
             evaluateDusek(predicate);
+            return predicate;
+        }).forEachOrdered((_item) -> {
             System.exit(0);
-        }
-        //initializeEvaluation();
+        }); //initializeEvaluation();
 
         //RANDOM DATA SPLIT
         //for (double fold = 0.0; fold < 1.0; fold += 0.1) {
@@ -183,7 +178,6 @@ public class Bagel extends DatasetParser {
             System.out.println("======================================================");
             System.out.println("                      ===F=" + f + "===                      ");
             System.out.println("======================================================");
-            System.out.println("======================================================");
 
             for (String predicate : predicates) {
                 randomGen = new Random(SEED);
@@ -205,7 +199,7 @@ public class Bagel extends DatasetParser {
                             int x = 1;
                             int xInd = MRstr.indexOf("X-");
                             while (xInd != -1) {
-                                String xStr = MRstr.substring(xInd, MRstr.indexOf(")", xInd));
+                                String xStr = MRstr.substring(xInd, MRstr.indexOf(')', xInd));
                                 MRstr = MRstr.replaceFirst(xStr, "\"X" + x + "\"");
                                 x++;
 
@@ -257,7 +251,7 @@ public class Bagel extends DatasetParser {
                             int x = 1;
                             int xInd = MRstr.indexOf("X-");
                             while (xInd != -1) {
-                                String xStr = MRstr.substring(xInd, MRstr.indexOf(")", xInd));
+                                String xStr = MRstr.substring(xInd, MRstr.indexOf(')', xInd));
                                 MRstr = MRstr.replaceFirst(xStr, "\"X" + x + "\"");
                                 x++;
 
@@ -298,32 +292,29 @@ public class Bagel extends DatasetParser {
                 } catch (IOException ex) {
                     Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
                 }
-                for (DatasetInstance di : datasetInstances) {
-                    if (trainMRs.contains(di.getMeaningRepresentation().getMRstr())) {
-                        trainingData.add(new DatasetInstance(di));
-                    }
-                }
-                for (DatasetInstance di : datasetInstances) {
-                    if (testMRs.contains(di.getMeaningRepresentation().getMRstr())) {
-                        testingData.add(new DatasetInstance(di));
-                    }
-                }
+                datasetInstances.stream().filter((di) -> (trainMRs.contains(di.getMeaningRepresentation().getMRstr()))).forEachOrdered((di) -> {
+                    trainingData.add(new DatasetInstance(di));
+                });
+                datasetInstances.stream().filter((di) -> (testMRs.contains(di.getMeaningRepresentation().getMRstr()))).forEachOrdered((di) -> {
+                    testingData.add(new DatasetInstance(di));
+                });
                 createNaiveAlignments(trainingData);
 
-                if (resetLists || !loadLMs()) {
+                if (resetStoredCaches || !loadLMs()) {
                     ArrayList<ArrayList<String>> LMWordTraining = new ArrayList<>();
 
                     HashMap<String, ArrayList<ArrayList<String>>> LMWordTrainingPerPredicate = new HashMap<>();
                     HashMap<String, ArrayList<ArrayList<String>>> LMAttrTrainingPerPredicate = new HashMap<>();
-                    for (DatasetInstance di : trainingData) {
+                    trainingData.stream().map((di) -> {
                         if (!LMWordTrainingPerPredicate.containsKey(di.getMeaningRepresentation().getPredicate())) {
                             LMWordTrainingPerPredicate.put(di.getMeaningRepresentation().getPredicate(), new ArrayList<ArrayList<String>>());
                             LMAttrTrainingPerPredicate.put(di.getMeaningRepresentation().getPredicate(), new ArrayList<ArrayList<String>>());
                         }
+                        return di;
+                    }).forEachOrdered((di) -> {
                         HashSet<ArrayList<Action>> seqs = new HashSet<>();
-                        seqs.add(di.getTrainRealization());
-                        seqs.addAll(di.getEvalRealizations());
-                        for (ArrayList<Action> seq : seqs) {
+                        seqs.add(di.getDirectReferenceSequence());
+                        seqs.forEach((seq) -> {
                             ArrayList<String> wordSeq = new ArrayList<>();
                             ArrayList<String> attrSeq = new ArrayList<>();
 
@@ -350,69 +341,71 @@ public class Bagel extends DatasetParser {
                             LMWordTraining.add(wordSeq);
                             LMWordTrainingPerPredicate.get(di.getMeaningRepresentation().getPredicate()).add(wordSeq);
                             LMAttrTrainingPerPredicate.get(di.getMeaningRepresentation().getPredicate()).add(attrSeq);
-                        }
-                    }
+                        });
+                    });
                     wordLM = new SimpleLM(3);
                     wordLM.trainOnStrings(LMWordTraining);
 
                     wordLMsPerPredicate = new HashMap<>();
                     attrLMsPerPredicate = new HashMap<>();
-                    for (String pred : LMWordTrainingPerPredicate.keySet()) {
+                    LMWordTrainingPerPredicate.keySet().stream().map((pred) -> {
                         SimpleLM simpleWordLM = new SimpleLM(3);
                         simpleWordLM.trainOnStrings(LMWordTrainingPerPredicate.get(pred));
                         wordLMsPerPredicate.put(pred, simpleWordLM);
-
+                        return pred;
+                    }).forEachOrdered((pred) -> {
                         SimpleLM simpleAttrLM = new SimpleLM(3);
                         simpleAttrLM.trainOnStrings(LMAttrTrainingPerPredicate.get(pred));
                         attrLMsPerPredicate.put(pred, simpleAttrLM);
-                    }
+                    });
                     writeLMs();
                 }
 
                 availableAttributeActions.get(predicate).add(Action.TOKEN_END);
                 HashMap<String, HashMap<String, HashSet<Action>>> availableWordActions = new HashMap<>();
-                for (DatasetInstance DI : trainingData) {
+                trainingData.forEach((DI) -> {
                     HashSet<String> mentionedAttributes = new HashSet<>();
                     HashSet<Action> mentionedWords = new HashSet<>();
-                    for (ArrayList<Action> realization : DI.getEvalRealizations()) {
-                        for (Action a : realization) {
-                            if (!a.getAttribute().equals(Action.TOKEN_END)) {
-                                String attr = a.getAttribute().substring(0, a.getAttribute().indexOf('='));
-                                mentionedAttributes.add(attr);
-                                if (!a.getWord().equals(Action.TOKEN_START)
-                                        && !a.getWord().equals(Action.TOKEN_END)
-                                        && !a.getWord().matches("([,.?!;:'])")) {
-                                    mentionedWords.add(a);
-                                }
-                                if (attr.equals("[]")) {
-                                    System.out.println("RR " + realization);
-                                    System.out.println("RR " + a);
-                                    System.exit(0);
-                                }
-                            }
+                    
+                    DI.getDirectReferenceAttrValueSequence().stream().filter((a) -> (!a.getAttribute().equals(Action.TOKEN_END))).forEachOrdered((a) -> {
+                        String attr = a.getAttribute().substring(0, a.getAttribute().indexOf('='));
+                        mentionedAttributes.add(attr);
+                        if (!a.getWord().equals(Action.TOKEN_START)
+                                && !a.getWord().equals(Action.TOKEN_END)
+                                && !a.getWord().matches("([,.?!;:'])")) {
+                            mentionedWords.add(a);
                         }
-                        if (!availableWordActions.containsKey(predicate)) {
-                            availableWordActions.put(predicate, new HashMap<String, HashSet<Action>>());
+                        if (attr.equals("[]")) {
+                            System.out.println("RR " + DI.getDirectReferenceAttrValueSequence());
+                            System.out.println("RR " + a);
+                            System.exit(0);
                         }
-                        for (String attribute : mentionedAttributes) {
-                            if (!availableWordActions.get(predicate).containsKey(attribute)) {
-                                availableWordActions.get(predicate).put(attribute, new HashSet<Action>());
-                                availableWordActions.get(predicate).get(attribute).add(new Action(Action.TOKEN_END, attribute));
-                            }
-                            for (Action a : mentionedWords) {
-                                if (a.getWord().startsWith(Action.TOKEN_X)) {
-                                    if (a.getWord().substring(3, a.getWord().lastIndexOf('_')).toLowerCase().trim().equals(attribute)) {
-                                        availableWordActions.get(predicate).get(attribute).add(new Action(a.getWord(), attribute));
-                                    }
-                                } else {
+                    });
+
+                    if (!availableWordActions.containsKey(predicate)) {
+                        availableWordActions.put(predicate, new HashMap<String, HashSet<Action>>());
+                    }
+
+                    mentionedAttributes.stream().map((attribute) -> {
+                        if (!availableWordActions.get(predicate).containsKey(attribute)) {
+                            availableWordActions.get(predicate).put(attribute, new HashSet<Action>());
+                            availableWordActions.get(predicate).get(attribute).add(new Action(Action.TOKEN_END, attribute));
+                        }
+                        return attribute;
+                    }).forEachOrdered((attribute) -> {
+                        mentionedWords.forEach((a) -> {
+                            if (a.getWord().startsWith(Action.TOKEN_X)) {
+                                if (a.getWord().substring(3, a.getWord().lastIndexOf('_')).toLowerCase().trim().equals(attribute)) {
                                     availableWordActions.get(predicate).get(attribute).add(new Action(a.getWord(), attribute));
                                 }
+                            } else {
+                                availableWordActions.get(predicate).get(attribute).add(new Action(a.getWord(), attribute));
                             }
-                        }
-                    }
-                }
+                        });
+                    });
+                });
 
-                if (resetLists || !loadTrainingData()) {
+                if (resetStoredCaches || !loadTrainingData()) {
                     Object[] results = createTrainingDatasets(trainingData, availableWordActions);
                     if (results[0] instanceof HashMap) {
                         predicateAttrTrainingData = (HashMap<String, ArrayList<Instance>>) results[0];
@@ -457,43 +450,7 @@ public class Bagel extends DatasetParser {
                 //}
             }
             //System.exit(0);
-        }/*
-        double finalAvgArgDistance = 0.0;
-        for (Double avg : crossAvgArgDistances) {
-        finalAvgArgDistance += avg;
-        }
-        finalAvgArgDistance /= crossAvgArgDistances.size();
-        
-        System.out.println("==========================");
-        System.out.println("==========================");
-        System.out.println("Final avg arg distance: \t" + finalAvgArgDistance);
-        
-        double finalNISTDistance = 0.0;
-        for (Double avg : crossNIST) {
-        finalNISTDistance += avg;
-        }
-        finalNISTDistance /= crossNIST.size();
-        
-        System.out.println("Final NIST: \t" + finalNISTDistance);
-        
-        double finalBLEUDistance = 0.0;
-        for (Double avg : crossBLEU) {
-        finalBLEUDistance += avg;
-        }
-        finalBLEUDistance /= crossBLEU.size();
-        
-        System.out.println("Final BLEU: \t" + finalBLEUDistance);
-        
-        double finalBLEUSmoothDistance = 0.0;
-        for (Double avg : crossBLEUSmooth) {
-        finalBLEUSmoothDistance += avg;
-        }
-        finalBLEUSmoothDistance /= crossBLEUSmooth.size();
-        
-        System.out.println("Final BLEUSmooth: \t" + finalBLEUSmoothDistance);
-        System.out.println("==========================");
-        System.out.println("==========================");*/
-        //evaluateGenerationDoc(classifiersWords, file);
+        }        //evaluateGenerationDoc(classifiersWords, file);
         //printEvaluation("robocup_data\\results", -1);        //evaluateGenerationDoc(classifiersWords, file);
         //printEvaluation("robocup_data\\results", -1);        //evaluateGenerationDoc(classifiersWords, file);
         //printEvaluation("robocup_data\\results", -1);        //evaluateGenerationDoc(classifiersWords, file);
@@ -540,6 +497,7 @@ public class Bagel extends DatasetParser {
      * @param detailedResults
      * @return
      */
+    @Override
     public Double evaluateGeneration(HashMap<String, JAROW> classifierAttrs, HashMap<String, HashMap<String, JAROW>> classifierWords, ArrayList<DatasetInstance> testingData, HashMap<String, HashSet<String>> availableAttributeActions, HashMap<String, HashMap<String, HashSet<Action>>> availableWordActions, boolean printResults, int epoch, boolean detailedResults) {
         System.out.println("Evaluate argument generation");
 
@@ -582,7 +540,7 @@ public class Bagel extends DatasetParser {
                     attrValuesToBeMentioned.remove(predictedAttr);
                 }
                 if (!attrValuesToBeMentioned.isEmpty()) {
-                    Instance attrTrainingVector = createAttrInstance(predicate, "@TOK@", predictedAttrValues, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), availableAttributeActions);
+                    Instance attrTrainingVector = createContentInstance(predicate, "@TOK@", predictedAttrValues, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), availableAttributeActions);
 
                     if (attrTrainingVector != null) {
                         Prediction predictAttr = classifierAttrs.get(predicate).predict(attrTrainingVector);
@@ -590,7 +548,6 @@ public class Bagel extends DatasetParser {
                         if (!classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributes().keySet())) {
                             System.out.println("MR ATTR NOT IN CLASSIFIERS");
                             System.out.println(classifierAttrs.get(predicate).getCurrentWeightVectors().keySet());
-                            System.out.println(di.getMeaningRepresentation().getAbstractMR());
                         }
                         String predictedValue = "";
                         if (!predictedAttr.equals(Action.TOKEN_END)) {
@@ -769,21 +726,17 @@ public class Bagel extends DatasetParser {
                 }
             }
             ArrayList<String> predictedAttrs = new ArrayList<>();
-            for (String attributeValuePair : predictedAttrValues) {
+            predictedAttrValues.forEach((attributeValuePair) -> {
                 predictedAttrs.add(attributeValuePair.split("=")[0]);
-            }
+            });
 
             String predictedWordSequence = postProcessWordSequence(di, predictedActionList);
 
             ArrayList<String> predictedAttrList = getPredictedAttrList(predictedActionList);
             if (attrValuesToBeMentionedCopy.size() != 0.0) {
                 double missingAttrs = 0.0;
-                for (String attr : attrValuesToBeMentionedCopy) {
-                    if (!predictedAttrList.contains(attr)) {
-                        missingAttrs += 1.0;
-                    }
-                }
-                double attrSize = (double) attrValuesToBeMentionedCopy.size();
+                missingAttrs = attrValuesToBeMentionedCopy.stream().filter((attr) -> (!predictedAttrList.contains(attr))).map((_item) -> 1.0).reduce(missingAttrs, (accumulator, _item) -> accumulator + _item);
+                double attrSize = attrValuesToBeMentionedCopy.size();
                 attrCoverage.put(predictedWordSequence, missingAttrs / attrSize);
             }
 
@@ -801,104 +754,17 @@ public class Bagel extends DatasetParser {
 
             ArrayList<Sequence<IString>> references = new ArrayList<>();
             ArrayList<String> referencesStrings = new ArrayList<>();
-            for (String ref : di.getEvalReferences()) {
+            di.getEvaluationReferences().stream().map((ref) -> {
                 referencesStrings.add(ref);
+                return ref;
+            }).forEachOrdered((ref) -> {
                 references.add(IStrings.tokenize(NISTTokenizer.tokenize(ref)));
-            }
+            });
 
             //System.out.println(predictedWordSequence + ">>>"+ referencesStrings);
             finalReferencesWordSequences.put(predictedWordSequence, referencesStrings);
             finalReferences.add(references);
-
-            //EVALUATE ATTRIBUTE SEQUENCE
-            HashSet<ArrayList<String>> goldAttributeSequences = new HashSet<>();
-            for (DatasetInstance di2 : testingData) {
-                if (di2.getMeaningRepresentation().getMRstr().equals(di.getMeaningRepresentation().getMRstr())) {
-                    goldAttributeSequences.addAll(di2.getEvalMentionedAttributeSequences().values());
-                }
-            }
-
-            //for (ArrayList<String> goldArgs : abstractMeaningReprs.get(predicate).get(mr).values()) {
-            int minTotArgDistance = Integer.MAX_VALUE;
-            for (ArrayList<String> goldArgs : goldAttributeSequences) {
-                int totArgDistance = 0;
-                HashSet<Integer> matchedPositions = new HashSet<>();
-                for (int i = 0; i < predictedAttrs.size(); i++) {
-                    if (!predictedAttrs.get(i).equals(Action.TOKEN_START)
-                            && !predictedAttrs.get(i).equals(Action.TOKEN_END)) {
-                        int minArgDistance = Integer.MAX_VALUE;
-                        int minArgPos = -1;
-                        for (int j = 0; j < goldArgs.size(); j++) {
-                            if (!matchedPositions.contains(j) && goldArgs.get(j).equals(predictedAttrs.get(i))) {
-                                int argDistance = Math.abs(j - i);
-
-                                if (argDistance < minArgDistance) {
-                                    minArgDistance = argDistance;
-                                    minArgPos = j;
-                                }
-                            }
-                        }
-
-                        if (minArgPos == -1) {
-                            totArgDistance += 100;
-                            /*System.out.println("ADDITIONAL ARG: " + predictedAttrs.get(i));
-                            System.out.println(goldArgs);
-                            System.out.println(predictedAttrs);
-                            System.out.println(predictedAttrValues);*/
-                        } else {
-                            matchedPositions.add(minArgPos);
-                            totArgDistance += minArgDistance;
-                        }
-                    }
-                }
-                /*if (totArgDistance > 100) {
-                System.out.println(predictedAttrs);
-                System.out.println(goldAttributeSequences);
-                System.out.println(totArgDistance);
-                System.out.println(predictedActionList);
-                System.exit(0);                    
-                }*/
-                ArrayList<String> predictedCopy = (ArrayList<String>) predictedAttrs.clone();
-                for (String goldArg : goldArgs) {
-                    if (!goldArg.equals(Action.TOKEN_END)) {
-                        boolean contained = predictedCopy.remove(goldArg);
-                        if (!contained) {
-                            totArgDistance += 1000;
-                        }
-                    }
-                }
-                if (totArgDistance < minTotArgDistance) {
-                    minTotArgDistance = totArgDistance;
-                }
-            }
-            /*System.out.println("PS: " + predictedString);
-            System.out.println("R: " + references);
-            System.out.println("M: " + di.getMeaningRepresentation().getAttributes());
-            System.out.println("GGG: " + mentionedValueSequence);
-            System.out.println("PV: " + predictedAttrValuePairs);
-            System.out.println("P: " + predictedAttrs);
-            System.out.println("G: " + minGoldArgs);
-            System.out.println("Distance: " + minTotArgDistance);
-            System.out.println("==============");*/
-            totalArgDistance += minTotArgDistance;
         }
-        /*for (DatasetInstance di : trainingData) {
-            String trainRef = (new ActionSequence(di.getTrainRealization())).getWordSequenceToNoPunctString().replaceAll("@x@.+?[\\s\\d]", "x ").replaceAll("  ", " ").trim();
-            for (String gen : allPredictedWordSequences) {
-                /*System.out.println(gen.replaceAll("@x@.+?[\\s\\d]", "x ").replaceAll("\\p{Punct}|\\d", "").replaceAll("  ", " ").trim());
-                System.out.println(trainRef);
-                System.out.println("==========================");*/
- /*if (gen.replaceAll("@x@.+?[\\s\\d]", "x ").replaceAll("\\p{Punct}|\\d", "").replaceAll("  ", " ").trim().equals(trainRef)) {
-
-                    System.out.println("++++==========================");
-                    System.out.println(gen);
-                    System.out.println(di.getTrainRealization());
-                    System.out.println(generationActions.get(gen));
-                    System.out.println("++++==========================");
-                }
-            }
-        }*/
-        crossAvgArgDistances.add(totalArgDistance / (double) testingData.size());
 
         NISTMetric NIST = new NISTMetric(finalReferences);
         BLEUMetric BLEU = new BLEUMetric(finalReferences, 4, false);
@@ -908,10 +774,8 @@ public class Bagel extends DatasetParser {
         Double bleuSmoothScore = BLEUsmooth.score(generations);
 
         double finalCoverage = 0.0;
-        for (double c : attrCoverage.values()) {
-            finalCoverage += c;
-        }
-        finalCoverage /= (double) attrCoverage.size();
+        finalCoverage = attrCoverage.values().stream().map((c) -> c).reduce(finalCoverage, (accumulator, _item) -> accumulator + _item);
+        finalCoverage /= attrCoverage.size();
 
         crossNIST.add(nistScore);
         crossBLEU.add(bleuScore);
@@ -920,6 +784,8 @@ public class Bagel extends DatasetParser {
         System.out.println("NIST: \t" + nistScore);
         System.out.println("BLEU: \t" + bleuScore);
         System.out.println("COVERAGE: \t" + finalCoverage);
+        //System.out.println("g: " + generations);
+        //System.out.println("attr: " + predictedAttrLists);
         //System.out.println("g: " + generations);
         //System.out.println("attr: " + predictedAttrLists);
         System.out.println("BLEU smooth: \t" + bleuSmoothScore);
@@ -951,30 +817,26 @@ public class Bagel extends DatasetParser {
             detailedRes += predictedString + "\t" + finalReferencesWordSequences.get(predictedString) + "\t" + predictedWordSequencesMRs.get(a) + "\t" + BLEUSmooth + "\t" + maxRouge + "\t" + cover + "\t" + avg + "\t" + harmonicMean + "|";
             a++;
         }
-        System.out.println("ROUGE: \t" + (avgRougeScore / (double) allPredictedWordSequences.size()));
+        System.out.println("ROUGE: \t" + (avgRougeScore / allPredictedWordSequences.size()));
         System.out.println();
-        System.out.println(detailedRes);
 
         if (printResults) {
             BufferedWriter bw = null;
             File f = null;
             try {
-                f = new File("BAGELTextsAt " + fold + "FoldAfter" + (epoch + 1) + "epochs" + "_" + JLOLS.earlyStopMaxFurtherSteps + "_" + JLOLS.p + ".txt");
+                f = new File("BAGELTextsAt " + fold + "FoldAfter" + (epoch + 1) + "epochs" + "_" + JLOLS.sentenceCorrectionFurtherSteps + "_" + JLOLS.p + ".txt");
             } catch (NullPointerException e) {
-                System.err.println("File not found." + e);
             }
 
             try {
                 bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
             } catch (FileNotFoundException e) {
-                System.err.println("Error opening file for writing! " + e);
             }
 
             try {
                 bw.write("BLEU:" + bleuScore);
                 bw.write("\n");
             } catch (IOException e) {
-                System.err.println("Write error!");
             }
             for (int i = 0; i < allPredictedWordSequences.size(); i++) {
                 try {
@@ -985,15 +847,12 @@ public class Bagel extends DatasetParser {
 
                     bw.write("\n");
                 } catch (IOException e) {
-                    System.err.println("Write error!");
                 }
             }
 
             try {
                 bw.close();
             } catch (IOException e) {
-                System.err.println("Error closing file.");
-            } catch (Exception e) {
             }
         }
         return bleuScore;
@@ -1021,7 +880,7 @@ public class Bagel extends DatasetParser {
                 String text;
                 while ((line = br.readLine()) != null) {
                     if (line.startsWith("<seg")) {
-                        text = line.substring(line.indexOf(">") + 1, line.lastIndexOf("<")).replaceAll("\\.", " \\.").replaceAll("  ", " ");
+                        text = line.substring(line.indexOf('>') + 1, line.lastIndexOf('<')).replaceAll("\\.", " \\.").replaceAll("  ", " ");
                         outTexts.add(text.toLowerCase());
                     }
                 }
@@ -1037,11 +896,11 @@ public class Bagel extends DatasetParser {
                 String MRstr;
                 while ((line = br.readLine()) != null) {
                     if (line.startsWith("<seg")) {
-                        MRstr = line.substring(line.indexOf(">") + 1, line.lastIndexOf("<"));
+                        MRstr = line.substring(line.indexOf('>') + 1, line.lastIndexOf('<'));
                         int xInd = MRstr.indexOf("X-");
                         int x = 1;
                         while (xInd != -1) {
-                            String xStr = MRstr.substring(xInd, MRstr.indexOf(")", xInd));
+                            String xStr = MRstr.substring(xInd, MRstr.indexOf(')', xInd));
                             MRstr = MRstr.replaceFirst(xStr, "\"X" + x + "\"");
                             x++;
 
@@ -1072,11 +931,11 @@ public class Bagel extends DatasetParser {
                 String test;
                 while ((line = br.readLine()) != null) {
                     if (line.startsWith("<seg")) {
-                        test = line.substring(line.indexOf(">") + 1, line.lastIndexOf("<"));
+                        test = line.substring(line.indexOf('>') + 1, line.lastIndexOf('<'));
 
-                        if (!testMap.containsKey(outTexts.get(i))) {
+                        /*if (!testMap.containsKey(outTexts.get(i))) {
                             testMap.put(i, new HashSet<String>());
-                        }
+                        }*/
                         testMap.get(i).add(test);
                         i++;
                         if (i >= outTexts.size()) {
@@ -1121,15 +980,15 @@ public class Bagel extends DatasetParser {
                 referencesStrings.add(cleanedWords);
                 references.add(IStrings.tokenize(NISTTokenizer.tokenize(cleanedWords)));
                 }*/
-
                 //for (String realization : testMap.get(j)) {
-                for (String realization : dusekGenerations.get(predictedString).getEvalReferences()) {
+                dusekGenerations.get(predictedString).getEvaluationReferences().stream().map((realization) -> {
                     referencesStrings.add(realization);
+                    return realization;
+                }).forEachOrdered((realization) -> {
                     references.add(IStrings.tokenize(NISTTokenizer.tokenize(realization)));
-                }
+                });
                 finalReferencesStrings.put(predictedString, referencesStrings);
                 finalReferences.add(references);
-                System.out.println(predictedString + "\t" + referencesStrings);
             }
             NISTMetric NIST = new NISTMetric(finalReferences);
             BLEUMetric BLEU = new BLEUMetric(finalReferences, 4, false);
@@ -1143,7 +1002,7 @@ public class Bagel extends DatasetParser {
             BLEUSmooths.add(bleuSmoothScore);
 
             double avgRougeScore = 0.0;
-            for (String predictedString : dusekGenerations.keySet()) {
+            avgRougeScore = dusekGenerations.keySet().stream().map((predictedString) -> {
                 double maxRouge = 0.0;
                 for (String ref : finalReferencesStrings.get(predictedString)) {
                     double rouge = Rouge.ROUGE_N(predictedString.toLowerCase(), ref.toLowerCase(), 4);
@@ -1151,16 +1010,16 @@ public class Bagel extends DatasetParser {
                         maxRouge = rouge;
                     }
                 }
-                avgRougeScore += maxRouge;
-            }
-            ROUGEs.add((avgRougeScore / (double) dusekGenerations.keySet().size()));
+                return maxRouge;
+            }).map((maxRouge) -> maxRouge).reduce(avgRougeScore, (accumulator, _item) -> accumulator + _item);
+            ROUGEs.add((avgRougeScore / dusekGenerations.keySet().size()));
         }
         /*HashSet<String> shown = new HashSet<String>();
         for (DatasetInstance di : datasetInstances.get(predicate)) {
             if (!shown.contains(di.getMeaningRepresentation().getMRstr())) {
                 shown.add(di.getMeaningRepresentation().getMRstr());
                 String refs = "";
-                for (String ref : di.getEvalReferences()) {
+                for (String ref : di.getEvaluationReferences()) {
                     refs += ref + ";";
                 }
                 System.out.println("inform(" + di.getMeaningRepresentation().getMRstr() +")\t" + refs);
@@ -1170,31 +1029,24 @@ public class Bagel extends DatasetParser {
         Double avgBLUESmooths = 0.0;
         Double avgNISTs = 0.0;
         Double avgROUGEs = 0.0;
-        for (Double d : BLEUs) {
-            avgBLUEs += d;
-        }
+        avgBLUEs = BLEUs.stream().map((d) -> d).reduce(avgBLUEs, (accumulator, _item) -> accumulator + _item);
         avgBLUEs /= BLEUs.size();
-        for (Double d : BLEUSmooths) {
-            avgBLUESmooths += d;
-        }
+        avgBLUESmooths = BLEUSmooths.stream().map((d) -> d).reduce(avgBLUESmooths, (accumulator, _item) -> accumulator + _item);
         avgBLUESmooths /= BLEUSmooths.size();
-        for (Double d : NISTs) {
-            avgNISTs += d;
-        }
+        avgNISTs = NISTs.stream().map((d) -> d).reduce(avgNISTs, (accumulator, _item) -> accumulator + _item);
         avgNISTs /= NISTs.size();
-        for (Double d : ROUGEs) {
-            avgROUGEs += d;
-        }
+        avgROUGEs = ROUGEs.stream().map((d) -> d).reduce(avgROUGEs, (accumulator, _item) -> accumulator + _item);
         avgROUGEs /= ROUGEs.size();
 
         System.out.println("NIST: \t" + avgNISTs);
         System.out.println("BLEU: \t" + avgBLUEs);
         //System.out.println("g: " + generations);
         //System.out.println("attr: " + predictedAttrLists);
+        //System.out.println("g: " + generations);
+        //System.out.println("attr: " + predictedAttrLists);
         System.out.println("BLEU smooth: \t" + avgBLUESmooths);
 
         System.out.println("ROUGE: \t" + avgROUGEs);
-        System.out.println();
 
         return 0.0;
     }
@@ -1219,7 +1071,7 @@ public class Bagel extends DatasetParser {
                 if (line.startsWith("FULL_DA")) {
                     line = line.substring(10);
 
-                    previousPredicate = line.substring(0, line.indexOf("("));
+                    previousPredicate = line.substring(0, line.indexOf('('));
                     if (!predicates.contains(previousPredicate) && previousPredicate != null) {
                         predicates.add(previousPredicate);
 
@@ -1240,14 +1092,14 @@ public class Bagel extends DatasetParser {
                         }
                     }
 
-                    line = line.substring(line.indexOf("(") + 1, line.lastIndexOf(")"));
+                    line = line.substring(line.indexOf('(') + 1, line.lastIndexOf(')'));
 
                     String MRstr = line;
                     HashMap<String, String> names = new HashMap<>();
-                    int s = line.indexOf("\"");
+                    int s = line.indexOf('"');
                     int a = 0;
                     while (s != -1) {
-                        int e = line.indexOf("\"", s + 1);
+                        int e = line.indexOf('"', s + 1);
 
                         String name = line.substring(s, e + 1);
                         //line = line.replace(name, "@@$$" + a + "$$@@");
@@ -1256,7 +1108,7 @@ public class Bagel extends DatasetParser {
                         names.put("x" + a, name);
                         a++;
 
-                        s = line.indexOf("\"");
+                        s = line.indexOf('"');
                     }
 
                     HashMap<String, HashSet<String>> argumentValues = new HashMap<>();
@@ -1293,7 +1145,7 @@ public class Bagel extends DatasetParser {
                 } else if (line.startsWith("ABSTRACT_DA")) {
                     line = line.substring(14);
 
-                    previousPredicate = line.substring(0, line.indexOf("("));
+                    previousPredicate = line.substring(0, line.indexOf('('));
                     if (!predicates.contains(previousPredicate) && previousPredicate != null) {
                         predicates.add(previousPredicate);
 
@@ -1311,21 +1163,21 @@ public class Bagel extends DatasetParser {
                         }
                     }
 
-                    line = line.substring(line.indexOf("(") + 1, line.lastIndexOf(")"));
+                    line = line.substring(line.indexOf('(') + 1, line.lastIndexOf(')'));
                     String MRstr = line;
 
                     HashMap<String, String> names = new HashMap<>();
-                    int s = line.indexOf("\"");
+                    int s = line.indexOf('"');
                     int a = 0;
                     while (s != -1) {
-                        int e = line.indexOf("\"", s + 1);
+                        int e = line.indexOf('"', s + 1);
 
                         String name = line.substring(s, e + 1);
                         line = line.replace(name, "x" + a);
                         names.put("x" + a, name);
                         a++;
 
-                        s = line.indexOf("\"");
+                        s = line.indexOf('"');
                     }
 
                     HashMap<String, HashSet<String>> attributeValues = new HashMap<>();
@@ -1372,11 +1224,10 @@ public class Bagel extends DatasetParser {
                      */
                     previousAMR = new MeaningRepresentation(previousPredicate, attributeValues, MRstr);
                 } else if (line.startsWith("->")) {
-                    line = line.substring(line.indexOf("\"") + 1, line.lastIndexOf("\""));
+                    line = line.substring(line.indexOf('"') + 1, line.lastIndexOf('"'));
 
-                    ArrayList<String> mentionedValueSequence = new ArrayList<>();
-                    ArrayList<String> mentionedAttributeSequence = new ArrayList<>();
-
+                    ArrayList<String> observedAttrValueSequence = new ArrayList<>();
+                    
                     ArrayList<String> realization = new ArrayList<>();
                     ArrayList<String> alignedRealization = new ArrayList<>();
 
@@ -1389,17 +1240,17 @@ public class Bagel extends DatasetParser {
                             if (words[i].trim().startsWith("[]")) {
                                 isEmptyAttr = true;
                             }
-                            int s = words[i].indexOf("[");
+                            int s = words[i].indexOf('[');
                             if (s != -1) {
-                                int e = words[i].indexOf("]", s + 1);
+                                int e = words[i].indexOf(']', s + 1);
 
                                 String mentionedValue = words[i].substring(s, e + 1);
                                 words[i] = words[i].replace(mentionedValue, "");
                                 if (mentionedValue.contains("+") && !words[i].trim().isEmpty()) {
-                                    mentionedAttribute = mentionedValue.substring(1, mentionedValue.indexOf("+"));
+                                    mentionedAttribute = mentionedValue.substring(1, mentionedValue.indexOf('+'));
 
                                     if (previousAMR.getAttributes().containsKey(mentionedAttribute)) {
-                                        if (mentionedValueSequence.isEmpty()) {
+                                        if (observedAttrValueSequence.isEmpty()) {
                                             String v = mentionedValue.substring(1, mentionedValue.length() - 1).replaceAll("\\+", "=");
                                             if (v.endsWith("=X")) {
                                                 //v = v.replace("=X", "=@@$$" + a + "$$@@");
@@ -1412,8 +1263,8 @@ public class Bagel extends DatasetParser {
                                                 }
                                                 v = v.replace("=X", "=x" + a);
                                             }
-                                            mentionedValueSequence.add(v.toLowerCase());
-                                        } else if (!mentionedValueSequence.get(mentionedValueSequence.size() - 1).equals(mentionedValue)) {
+                                            observedAttrValueSequence.add(v.toLowerCase());
+                                        } else if (!observedAttrValueSequence.get(observedAttrValueSequence.size() - 1).equals(mentionedValue)) {
                                             String v = mentionedValue.substring(1, mentionedValue.length() - 1).replaceAll("\\+", "=");
                                             if (v.endsWith("=X")) {
                                                 //v = v.replace("=X", "=@@$$" + +a + "$$@@");
@@ -1426,13 +1277,7 @@ public class Bagel extends DatasetParser {
                                                 }
                                                 v = v.replace("=X", "=x" + a);
                                             }
-                                            mentionedValueSequence.add(v.toLowerCase());
-                                        }
-
-                                        if (mentionedAttributeSequence.isEmpty()) {
-                                            mentionedAttributeSequence.add(mentionedAttribute.toLowerCase());
-                                        } else if (!mentionedAttributeSequence.get(mentionedAttributeSequence.size() - 1).equals(mentionedAttribute)) {
-                                            mentionedAttributeSequence.add(mentionedAttribute.toLowerCase());
+                                            observedAttrValueSequence.add(v.toLowerCase());
                                         }
                                     }
                                 } else if (!words[i].trim().isEmpty()) {
@@ -1479,8 +1324,7 @@ public class Bagel extends DatasetParser {
                     for (String attr : previousAMR.getAttributes().keySet()) {
                         for (String value : previousAMR.getAttributes().get(attr)) {
                             if (attr.equals("name") && value.equals("none")) {
-                                mentionedValueSequence.add(0, attr.toLowerCase() + "=" + value.toLowerCase());
-                                mentionedAttributeSequence.add(0, attr.toLowerCase());
+                                observedAttrValueSequence.add(0, attr.toLowerCase() + "=" + value.toLowerCase());
 
                                 if (useAlignments) {
                                     for (int i = 0; i < alignedRealization.size(); i++) {
@@ -1503,8 +1347,7 @@ public class Bagel extends DatasetParser {
                         }
                     }
 
-                    mentionedValueSequence.add(Action.TOKEN_END);
-                    mentionedAttributeSequence.add(Action.TOKEN_END);
+                    observedAttrValueSequence.add(Action.TOKEN_END);
 
                     if (realization.size() > maxWordRealizationSize) {
                         maxWordRealizationSize = realization.size();
@@ -1524,13 +1367,13 @@ public class Bagel extends DatasetParser {
                             }
                         }
                     } else {
-                        for (String word : realization) {
+                        realization.forEach((word) -> {
                             if (word.trim().matches("[,.?!;:']")) {
                                 alignedRealization.add(Action.TOKEN_PUNCT);
                             } else {
                                 alignedRealization.add("[]");
                             }
-                        }
+                        });
                     }
 
                     //Calculate alignments
@@ -1615,19 +1458,19 @@ public class Bagel extends DatasetParser {
                         valueAlignments.get(bestAlignment[0]).put(alignedStr, max);
 
                         alignments.remove(bestAlignment[0]);
-                        for (String value : alignments.keySet()) {
+                        alignments.keySet().forEach((value) -> {
                             HashSet<String> alignmentsToBeRemoved = new HashSet<>();
-                            for (String alignment : alignments.get(value).keySet()) {
+                            alignments.get(value).keySet().forEach((alignment) -> {
                                 String[] othCoords = alignment.split(" ");
                                 if (Integer.parseInt(coords[0].trim()) <= Integer.parseInt(othCoords[0].trim()) && (Integer.parseInt(coords[coords.length - 1].trim()) >= Integer.parseInt(othCoords[0].trim()))
                                         || (Integer.parseInt(othCoords[0].trim()) <= Integer.parseInt(coords[0].trim()) && Integer.parseInt(othCoords[othCoords.length - 1].trim()) >= Integer.parseInt(coords[0].trim()))) {
                                     alignmentsToBeRemoved.add(alignment);
                                 }
-                            }
-                            for (String alignment : alignmentsToBeRemoved) {
+                            });
+                            alignmentsToBeRemoved.forEach((alignment) -> {
                                 alignments.get(value).remove(alignment);
-                            }
-                        }
+                            });
+                        });
                         toRemove = new HashSet<>();
                         for (String value : alignments.keySet()) {
                             if (alignments.get(value).isEmpty()) {
@@ -1733,15 +1576,16 @@ public class Bagel extends DatasetParser {
                         }*/
                         if (existingDI.getMeaningRepresentation().getMRstr().equals(previousAMR.getMRstr())) {
                             //existing = true;
-                            existingDI.mergeDatasetInstance(mentionedValueSequence, mentionedAttributeSequence, realizationActions);
+                            existingDI.getEvaluationReferences().add(postProcessRef(previousAMR, realizationActions));
                             existingDIs.add(existingDI);
                         }
                     }
                     //if (!existing) {
-                    DatasetInstance DI = new DatasetInstance(previousAMR, mentionedValueSequence, mentionedAttributeSequence, realizationActions);
-                    for (DatasetInstance existingDI : existingDIs) {
-                        DI.mergeDatasetInstance(existingDI.getEvalMentionedValueSequences(), existingDI.getEvalMentionedAttributeSequences(), existingDI.getEvalRealizations());
-                    }
+                    this.observedAttrValueSequences.add(observedAttrValueSequence);
+                    DatasetInstance DI = new DatasetInstance(previousAMR, realizationActions, postProcessRef(previousAMR, realizationActions));
+                    existingDIs.forEach((existingDI) -> {
+                        DI.getEvaluationReferences().addAll(existingDI.getEvaluationReferences());
+                    });
                     datasetInstances.get(previousPredicate).add(DI);
                     //}
                     /*if (w.trim().equals("@x@name_0 is a restaurant in @x@area_0 near to @x@near_0 and @x@near_1 in the expensive pricerange .")) {
@@ -1753,43 +1597,6 @@ public class Bagel extends DatasetParser {
                             System.out.println(l.trim());
                         }
                     }*/
-                }
-            }
-            /*for (String pred : datasetInstances.keySet()) {
-                for (DatasetInstance di : datasetInstances.get(pred)) {                    
-                    for (ArrayList<Action> r : di.getEvalRealizations()) {
-                        String l = "";
-                        for (Action act : r) {
-                            l += act.getWord()+ " ";
-                        }                        
-                        //if (l.trim().equals("@x@name_0 is a restaurant in @x@area_0 near to @x@near_0 and @x@near_1 in the expensive pricerange .")) {
-                        if (l.trim().equals("@x@name_0 is a restaurant in the expensive price range in the @x@area_0 area near @x@near_0 and @x@near_1 .")) {
-                            System.out.println(">>> " + l.trim());                                     
-                                for (ArrayList<Action> g : di.getEvalRealizations()) {
-                                String f = "";
-                                for (Action act : g) {
-                                    f += act.getWord()+ " ";
-                                }                        
-                                System.out.println(f.trim());
-                            }
-                        }
-                    }
-                }
-            }*/
-            for (String pred : datasetInstances.keySet()) {
-                for (DatasetInstance di : datasetInstances.get(pred)) {
-                    HashSet<String> refs = new HashSet<>();
-                    for (ArrayList<Action> refSeq : di.getEvalRealizations()) {
-                        refs.add(postProcessRef(di, refSeq));
-                    }
-                    di.setEvalReferences(refs);
-                    di.setTrainReference(postProcessRef(di, di.getTrainRealization()));
-                    /*System.out.println("CREATE LISTS");
-                    System.out.println(di);
-                    System.out.println(di.getMeaningRepresentation().getPredicate());
-                    System.out.println(di.getMeaningRepresentation().getMRstr());
-                    System.out.println(di.getEvalReferences());
-                    System.out.println("=============");*/
                 }
             }
         } catch (FileNotFoundException ex) {
@@ -1816,147 +1623,146 @@ public class Bagel extends DatasetParser {
                 predicateWordTrainingData.put(predicate, new HashMap<String, ArrayList<Instance>>());
 
                 for (DatasetInstance di : trainingData) {
-                    for (ArrayList<Action> realization : di.getEvalRealizations()) {
-                        HashSet<String> attrValuesAlreadyMentioned = new HashSet<>();
-                        HashSet<String> attrValuesToBeMentioned = new HashSet<>();
-                        for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-                            int a = 0;
-                            for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
-                                if (value.startsWith("\"x")) {
-                                    value = "x" + a;
-                                    a++;
-                                } else if (value.startsWith("\"")) {
-                                    value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
-                                }
-                                attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
+                    ArrayList<Action> realization = di.getDirectReferenceAttrValueSequence();
+                    HashSet<String> attrValuesAlreadyMentioned = new HashSet<>();
+                    HashSet<String> attrValuesToBeMentioned = new HashSet<>();
+                    for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
+                        int a = 0;
+                        for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+                            if (value.startsWith("\"x")) {
+                                value = "x" + a;
+                                a++;
+                            } else if (value.startsWith("\"")) {
+                                value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
+                            }
+                            attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
+                        }
+                    }
+
+                    ArrayList<String> attributeSequence = new ArrayList<>();
+                    String attrValue = "";
+                    for (int w = 0; w < realization.size(); w++) {
+                        if (!realization.get(w).getAttribute().equals(Action.TOKEN_PUNCT)
+                                && !realization.get(w).getAttribute().equals(attrValue)) {
+                            if (!attrValue.isEmpty()) {
+                                attrValuesToBeMentioned.remove(attrValue);
+                            }
+                            Instance attrTrainingVector = createContentInstance(predicate, realization.get(w).getAttribute(), attributeSequence, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), availableAttributeActions);
+                            if (attrTrainingVector != null) {
+                                predicateAttrTrainingData.get(predicate).add(attrTrainingVector);
+                            }
+                            attributeSequence.add(realization.get(w).getAttribute());
+
+                            attrValue = realization.get(w).getAttribute();
+                            if (!attrValue.isEmpty()) {
+                                attrValuesAlreadyMentioned.add(attrValue);
+                                attrValuesToBeMentioned.remove(attrValue);
                             }
                         }
+                    }
+                    attrValuesAlreadyMentioned = new HashSet<>();
+                    attrValuesToBeMentioned = new HashSet<>();
+                    for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
+                        int a = 0;
+                        for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+                            if (value.startsWith("\"x")) {
+                                value = "x" + a;
+                                a++;
+                            } else if (value.startsWith("\"")) {
+                                value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
+                            }
+                            attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
+                        }
+                    }
 
-                        ArrayList<String> attributeSequence = new ArrayList<>();
-                        String attrValue = "";
-                        for (int w = 0; w < realization.size(); w++) {
-                            if (!realization.get(w).getAttribute().equals(Action.TOKEN_PUNCT)
-                                    && !realization.get(w).getAttribute().equals(attrValue)) {
+                    ArrayList<String> attrs = new ArrayList<>();
+                    boolean isValueMentioned = false;
+                    String valueTBM = "";
+                    attrValue = "";
+                    int a = -1;
+                    ArrayList<String> subPhrase = new ArrayList<>();
+                    for (int w = 0; w < realization.size(); w++) {
+                        if (!realization.get(w).getAttribute().equals(Action.TOKEN_PUNCT)) {
+                            if (!realization.get(w).getAttribute().equals(attrValue)) {
+                                a++;
                                 if (!attrValue.isEmpty()) {
                                     attrValuesToBeMentioned.remove(attrValue);
                                 }
-                                Instance attrTrainingVector = createAttrInstance(predicate, realization.get(w).getAttribute(), attributeSequence, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), availableAttributeActions);
-                                if (attrTrainingVector != null) {
-                                    predicateAttrTrainingData.get(predicate).add(attrTrainingVector);
-                                }
-                                attributeSequence.add(realization.get(w).getAttribute());
+                                attrs.add(realization.get(w).getAttribute());
 
                                 attrValue = realization.get(w).getAttribute();
-                                if (!attrValue.isEmpty()) {
-                                    attrValuesAlreadyMentioned.add(attrValue);
-                                    attrValuesToBeMentioned.remove(attrValue);
+                                subPhrase = new ArrayList<>();
+                                isValueMentioned = false;
+                                valueTBM = "";
+                                if (attrValue.contains("=")) {
+                                    valueTBM = attrValue.substring(attrValue.indexOf('=') + 1);
+                                }
+                                if (valueTBM.isEmpty()) {
+                                    isValueMentioned = true;
                                 }
                             }
-                        }
-                        attrValuesAlreadyMentioned = new HashSet<>();
-                        attrValuesToBeMentioned = new HashSet<>();
-                        for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-                            int a = 0;
-                            for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
-                                if (value.startsWith("\"x")) {
-                                    value = "x" + a;
-                                    a++;
-                                } else if (value.startsWith("\"")) {
-                                    value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
+
+                            if (!attrValue.equals(Action.TOKEN_END)) {
+                                ArrayList<String> predictedAttributesForInstance = new ArrayList<>();
+                                for (int i = 0; i < attrs.size() - 1; i++) {
+                                    predictedAttributesForInstance.add(attrs.get(i));
                                 }
-                                attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
-                            }
-                        }
+                                if (!attrs.get(attrs.size() - 1).equals(attrValue)) {
+                                    predictedAttributesForInstance.add(attrs.get(attrs.size() - 1));
+                                }
+                                ArrayList<String> nextAttributesForInstance = new ArrayList<>(attrs.subList(a + 1, attrs.size()));
+                                Instance wordTrainingVector = createWordInstance(predicate, realization.get(w), predictedAttributesForInstance, new ArrayList<Action>(realization.subList(0, w)), nextAttributesForInstance, attrValuesAlreadyMentioned, attrValuesToBeMentioned, isValueMentioned, availableWordActions.get(predicate));
 
-                        ArrayList<String> attrs = new ArrayList<>();
-                        boolean isValueMentioned = false;
-                        String valueTBM = "";
-                        attrValue = "";
-                        int a = -1;
-                        ArrayList<String> subPhrase = new ArrayList<>();
-                        for (int w = 0; w < realization.size(); w++) {
-                            if (!realization.get(w).getAttribute().equals(Action.TOKEN_PUNCT)) {
-                                if (!realization.get(w).getAttribute().equals(attrValue)) {
-                                    a++;
-                                    if (!attrValue.isEmpty()) {
-                                        attrValuesToBeMentioned.remove(attrValue);
+                                if (wordTrainingVector != null) {
+                                    String attribute = attrValue.substring(0, attrValue.indexOf('='));
+                                    if (!predicateWordTrainingData.get(predicate).containsKey(attribute)) {
+                                        predicateWordTrainingData.get(predicate).put(attribute, new ArrayList<Instance>());
                                     }
-                                    attrs.add(realization.get(w).getAttribute());
-
-                                    attrValue = realization.get(w).getAttribute();
-                                    subPhrase = new ArrayList<>();
-                                    isValueMentioned = false;
-                                    valueTBM = "";
-                                    if (attrValue.contains("=")) {
-                                        valueTBM = attrValue.substring(attrValue.indexOf('=') + 1);
+                                    predicateWordTrainingData.get(predicate).get(attribute).add(wordTrainingVector);
+                                    if (!realization.get(w).getWord().equals(Action.TOKEN_START)
+                                            && !realization.get(w).getWord().equals(Action.TOKEN_END)) {
+                                        subPhrase.add(realization.get(w).getWord());
                                     }
-                                    if (valueTBM.isEmpty()) {
+                                }
+                                if (!isValueMentioned) {
+                                    if (realization.get(w).getWord().startsWith(Action.TOKEN_X)
+                                            && (valueTBM.matches("[xX][0-9]+") || valueTBM.matches("\"[xX][0-9]+\"") || valueTBM.startsWith(Action.TOKEN_X))) {
                                         isValueMentioned = true;
-                                    }
-                                }
-
-                                if (!attrValue.equals(Action.TOKEN_END)) {
-                                    ArrayList<String> predictedAttributesForInstance = new ArrayList<>();
-                                    for (int i = 0; i < attrs.size() - 1; i++) {
-                                        predictedAttributesForInstance.add(attrs.get(i));
-                                    }
-                                    if (!attrs.get(attrs.size() - 1).equals(attrValue)) {
-                                        predictedAttributesForInstance.add(attrs.get(attrs.size() - 1));
-                                    }
-                                    ArrayList<String> nextAttributesForInstance = new ArrayList<>(attrs.subList(a + 1, attrs.size()));
-                                    Instance wordTrainingVector = createWordInstance(predicate, realization.get(w), predictedAttributesForInstance, new ArrayList<Action>(realization.subList(0, w)), nextAttributesForInstance, attrValuesAlreadyMentioned, attrValuesToBeMentioned, isValueMentioned, availableWordActions.get(predicate));
-
-                                    if (wordTrainingVector != null) {
-                                        String attribute = attrValue.substring(0, attrValue.indexOf('='));
-                                        if (!predicateWordTrainingData.get(predicate).containsKey(attribute)) {
-                                            predicateWordTrainingData.get(predicate).put(attribute, new ArrayList<Instance>());
-                                        }
-                                        predicateWordTrainingData.get(predicate).get(attribute).add(wordTrainingVector);
-                                        if (!realization.get(w).getWord().equals(Action.TOKEN_START)
-                                                && !realization.get(w).getWord().equals(Action.TOKEN_END)) {
-                                            subPhrase.add(realization.get(w).getWord());
-                                        }
-                                    }
-                                    if (!isValueMentioned) {
-                                        if (realization.get(w).getWord().startsWith(Action.TOKEN_X)
-                                                && (valueTBM.matches("[xX][0-9]+") || valueTBM.matches("\"[xX][0-9]+\"") || valueTBM.startsWith(Action.TOKEN_X))) {
-                                            isValueMentioned = true;
-                                        } else if (!realization.get(w).getWord().startsWith(Action.TOKEN_X)
-                                                && !(valueTBM.matches("[xX][0-9]+") || valueTBM.matches("\"[xX][0-9]+\"") || valueTBM.startsWith(Action.TOKEN_X))) {
-                                            for (ArrayList<String> alignedStr : valueAlignments.get(valueTBM).keySet()) {
-                                                if (endsWith(subPhrase, alignedStr)) {
-                                                    isValueMentioned = true;
-                                                    break;
-                                                }
+                                    } else if (!realization.get(w).getWord().startsWith(Action.TOKEN_X)
+                                            && !(valueTBM.matches("[xX][0-9]+") || valueTBM.matches("\"[xX][0-9]+\"") || valueTBM.startsWith(Action.TOKEN_X))) {
+                                        for (ArrayList<String> alignedStr : valueAlignments.get(valueTBM).keySet()) {
+                                            if (endsWith(subPhrase, alignedStr)) {
+                                                isValueMentioned = true;
+                                                break;
                                             }
                                         }
-                                        if (isValueMentioned) {
-                                            attrValuesAlreadyMentioned.add(attrValue);
-                                            attrValuesToBeMentioned.remove(attrValue);
-                                        }
                                     }
-                                    String mentionedAttrValue = "";
-                                    if (!realization.get(w).getWord().startsWith(Action.TOKEN_X)) {
-                                        for (String attrValueTBM : attrValuesToBeMentioned) {
-                                            if (attrValueTBM.contains("=")) {
-                                                String value = attrValueTBM.substring(attrValueTBM.indexOf('=') + 1);
-                                                if (!(value.matches("\"[xX][0-9]+\"")
-                                                        || value.matches("[xX][0-9]+")
-                                                        || value.startsWith(Action.TOKEN_X))) {
-                                                    for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
-                                                        if (endsWith(subPhrase, alignedStr)) {
-                                                            mentionedAttrValue = attrValueTBM;
-                                                            break;
-                                                        }
+                                    if (isValueMentioned) {
+                                        attrValuesAlreadyMentioned.add(attrValue);
+                                        attrValuesToBeMentioned.remove(attrValue);
+                                    }
+                                }
+                                String mentionedAttrValue = "";
+                                if (!realization.get(w).getWord().startsWith(Action.TOKEN_X)) {
+                                    for (String attrValueTBM : attrValuesToBeMentioned) {
+                                        if (attrValueTBM.contains("=")) {
+                                            String value = attrValueTBM.substring(attrValueTBM.indexOf('=') + 1);
+                                            if (!(value.matches("\"[xX][0-9]+\"")
+                                                    || value.matches("[xX][0-9]+")
+                                                    || value.startsWith(Action.TOKEN_X))) {
+                                                for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
+                                                    if (endsWith(subPhrase, alignedStr)) {
+                                                        mentionedAttrValue = attrValueTBM;
+                                                        break;
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                    if (!mentionedAttrValue.isEmpty()) {
-                                        attrValuesAlreadyMentioned.add(mentionedAttrValue);
-                                        attrValuesToBeMentioned.remove(mentionedAttrValue);
-                                    }
+                                }
+                                if (!mentionedAttrValue.isEmpty()) {
+                                    attrValuesAlreadyMentioned.add(mentionedAttrValue);
+                                    attrValuesToBeMentioned.remove(mentionedAttrValue);
                                 }
                             }
                         }
@@ -1974,28 +1780,22 @@ public class Bagel extends DatasetParser {
      *
      * @param trainingData
      */
+    @Override
     public void createNaiveAlignments(ArrayList<DatasetInstance> trainingData) {
         HashMap<ArrayList<Action>, HashMap<Action, Integer>> punctPatterns = new HashMap<>();
         HashMap<DatasetInstance, ArrayList<Action>> punctRealizations = new HashMap<DatasetInstance, ArrayList<Action>>();
 
-        for (DatasetInstance di : trainingData) {
+        trainingData.stream().map((di) -> {
             HashMap<ArrayList<Action>, ArrayList<Action>> calculatedRealizationsCache = new HashMap<>();
             HashSet<ArrayList<Action>> initRealizations = new HashSet<>();
-            for (ArrayList<Action> real : di.getEvalRealizations()) {
-                if (!calculatedRealizationsCache.containsKey(real)) {
-                    initRealizations.add(real);
-                }
+            if (!calculatedRealizationsCache.containsKey(di.getDirectReferenceSequence())) {
+                initRealizations.add(di.getDirectReferenceSequence());
             }
-            if (!calculatedRealizationsCache.containsKey(di.getTrainRealization())) {
-                initRealizations.add(di.getTrainRealization());
-            }
-
-            for (ArrayList<Action> realization : initRealizations) {
+            initRealizations.stream().map((realization) -> {
                 HashMap<String, HashSet<String>> values = new HashMap();
-                for (String attr : di.getMeaningRepresentation().getAttributes().keySet()) {
+                di.getMeaningRepresentation().getAttributes().keySet().forEach((attr) -> {
                     values.put(attr, new HashSet(di.getMeaningRepresentation().getAttributes().get(attr)));
-                }
-
+                });
                 ArrayList<Action> randomRealization = new ArrayList<>();
                 for (int i = 0; i < realization.size(); i++) {
                     Action a = realization.get(i);
@@ -2005,31 +1805,29 @@ public class Bagel extends DatasetParser {
                         randomRealization.add(new Action(a.getWord(), ""));
                     }
                 }
-
                 HashMap<Double, HashMap<String, ArrayList<Integer>>> indexAlignments = new HashMap<>();
                 values.keySet().stream().forEach((String attr) -> {
                     values.get(attr).stream().filter((value) -> (!value.equals("placetoeat")
                             && !(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+") || value.startsWith(Action.TOKEN_X)))).forEach((value) -> {
-                        valueAlignments.get(value).keySet().stream().forEach((align) -> {
-                            int n = align.size();
-                            for (int i = 0; i <= randomRealization.size() - n; i++) {
-                                ArrayList<String> compare = new ArrayList<String>();
-                                ArrayList<Integer> indexAlignment = new ArrayList<Integer>();
-                                for (int j = 0; j < n; j++) {
-                                    compare.add(randomRealization.get(i + j).getWord());
-                                    indexAlignment.add(i + j);
-                                }
-                                if (compare.equals(align)) {
-                                    if (!indexAlignments.containsKey(valueAlignments.get(value).get(align))) {
-                                        indexAlignments.put(valueAlignments.get(value).get(align), new HashMap<>());
+                                valueAlignments.get(value).keySet().stream().forEach((align) -> {
+                                    int n = align.size();
+                                    for (int i = 0; i <= randomRealization.size() - n; i++) {
+                                        ArrayList<String> compare = new ArrayList<String>();
+                                        ArrayList<Integer> indexAlignment = new ArrayList<Integer>();
+                                        for (int j = 0; j < n; j++) {
+                                            compare.add(randomRealization.get(i + j).getWord());
+                                            indexAlignment.add(i + j);
+                                        }
+                                        if (compare.equals(align)) {
+                                            if (!indexAlignments.containsKey(valueAlignments.get(value).get(align))) {
+                                                indexAlignments.put(valueAlignments.get(value).get(align), new HashMap<>());
+                                            }
+                                            indexAlignments.get(valueAlignments.get(value).get(align)).put(attr + "=" + value, indexAlignment);
+                                        }
                                     }
-                                    indexAlignments.get(valueAlignments.get(value).get(align)).put(attr + "=" + value, indexAlignment);
-                                }
-                            }
-                        });
-                    });
+                                });
+                            });
                 });
-
                 ArrayList<Double> similarities = new ArrayList<>(indexAlignments.keySet());
                 Collections.sort(similarities);
                 HashSet<String> assignedAttrValues = new HashSet<String>();
@@ -2053,50 +1851,45 @@ public class Bagel extends DatasetParser {
                         }
                     }
                 }
-
-                for (Action a : randomRealization) {
-                    if (a.getWord().startsWith(Action.TOKEN_X)) {
-                        String attr = a.getWord().substring(3, a.getWord().lastIndexOf('_')).toLowerCase().trim();
-                        /*int index = 0;
-                        if (!attrXIndeces.containsKey(attr)) {
-                            attrXIndeces.put(attr, 1);
-                        } else {
-                            index = attrXIndeces.get(attr);
-                            attrXIndeces.put(attr, index + 1);
-                        }
-                        a.setAttribute(attr + "=x" + index);*/
-                        a.setAttribute(attr + "=" + a.getWord());
+                randomRealization.stream().filter((a) -> (a.getWord().startsWith(Action.TOKEN_X))).forEachOrdered((a) -> {
+                    String attr = a.getWord().substring(3, a.getWord().lastIndexOf('_')).toLowerCase().trim();
+                    /*int index = 0;
+                    if (!attrXIndeces.containsKey(attr)) {
+                    attrXIndeces.put(attr, 1);
+                    } else {
+                    index = attrXIndeces.get(attr);
+                    attrXIndeces.put(attr, index + 1);
                     }
-                }
-
+                    a.setAttribute(attr + "=x" + index);*/
+                    a.setAttribute(attr + "=" + a.getWord());
+                });
                 String previousAttr = "";
                 /*int start = -1;
                 for (int i = 0; i < randomRealization.size(); i++) {
-                    if (!randomRealization.get(i).getAttribute().equals(Action.TOKEN_PUNCT)
-                            && !randomRealization.get(i).getAttribute().isEmpty()
-                            && !randomRealization.get(i).getAttribute().equals("[]")) {
-                        if (start != -1) {
-                            int middle = (start + i - 1) / 2 + 1;
-                            for (int j = start; j < middle; j++) {
-                                if (randomRealization.get(j).getAttribute().isEmpty()
-                                        || randomRealization.get(j).getAttribute().equals("[]")) {
-                                    randomRealization.get(j).setAttribute(previousAttr);
-                                }
-                            }
-                            for (int j = middle; j < i; j++) {
-                                if (randomRealization.get(j).getAttribute().isEmpty()
-                                        || randomRealization.get(j).getAttribute().equals("[]")) {
-                                    randomRealization.get(j).setAttribute(randomRealization.get(i).getAttribute());
-                                }
-                            }
-                        }
-                        start = i;
-                        previousAttr = randomRealization.get(i).getAttribute();
-                    } else {
-                        previousAttr = "";
-                    }
+                if (!randomRealization.get(i).getAttribute().equals(Action.TOKEN_PUNCT)
+                && !randomRealization.get(i).getAttribute().isEmpty()
+                && !randomRealization.get(i).getAttribute().equals("[]")) {
+                if (start != -1) {
+                int middle = (start + i - 1) / 2 + 1;
+                for (int j = start; j < middle; j++) {
+                if (randomRealization.get(j).getAttribute().isEmpty()
+                || randomRealization.get(j).getAttribute().equals("[]")) {
+                randomRealization.get(j).setAttribute(previousAttr);
+                }
+                }
+                for (int j = middle; j < i; j++) {
+                if (randomRealization.get(j).getAttribute().isEmpty()
+                || randomRealization.get(j).getAttribute().equals("[]")) {
+                randomRealization.get(j).setAttribute(randomRealization.get(i).getAttribute());
+                }
+                }
+                }
+                start = i;
+                previousAttr = randomRealization.get(i).getAttribute();
+                } else {
+                previousAttr = "";
+                }
                 }*/
-
                 previousAttr = "";
                 for (int i = 0; i < randomRealization.size(); i++) {
                     if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -2107,7 +1900,6 @@ public class Bagel extends DatasetParser {
                         previousAttr = randomRealization.get(i).getAttribute();
                     }
                 }
-
                 previousAttr = "";
                 for (int i = randomRealization.size() - 1; i >= 0; i--) {
                     if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -2118,7 +1910,6 @@ public class Bagel extends DatasetParser {
                         previousAttr = randomRealization.get(i).getAttribute();
                     }
                 }
-
                 //FIX WRONG @PUNCT@                
                 previousAttr = "";
                 for (int i = randomRealization.size() - 1; i >= 0; i--) {
@@ -2131,11 +1922,9 @@ public class Bagel extends DatasetParser {
                     }
                 }
                 ArrayList<Action> cleanRandomRealization = new ArrayList<>();
-                for (Action a : randomRealization) {
-                    if (!a.getAttribute().equals(Action.TOKEN_PUNCT)) {
-                        cleanRandomRealization.add(a);
-                    }
-                }
+                randomRealization.stream().filter((a) -> (!a.getAttribute().equals(Action.TOKEN_PUNCT))).forEachOrdered((a) -> {
+                    cleanRandomRealization.add(a);
+                });
                 //ADD END TOKENS
                 ArrayList<Action> endRandomRealization = new ArrayList<>();
                 previousAttr = "";
@@ -2151,19 +1940,17 @@ public class Bagel extends DatasetParser {
                 endRandomRealization.add(new Action(Action.TOKEN_END, previousAttr));
                 endRandomRealization.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
                 calculatedRealizationsCache.put(realization, endRandomRealization);
-
                 ArrayList<String> attrValues = new ArrayList<String>();
-                for (Action a : endRandomRealization) {
+                endRandomRealization.forEach((a) -> {
                     if (attrValues.isEmpty()) {
                         attrValues.add(a.getAttribute());
                     } else if (!attrValues.get(attrValues.size() - 1).equals(a.getAttribute())) {
                         attrValues.add(a.getAttribute());
                     }
-                }
+                });
                 if (attrValues.size() > maxAttrRealizationSize) {
                     maxAttrRealizationSize = attrValues.size();
                 }
-
                 ArrayList<Action> punctRealization = new ArrayList<>();
                 punctRealization.addAll(randomRealization);
                 previousAttr = "";
@@ -2180,16 +1967,20 @@ public class Bagel extends DatasetParser {
                 if (!punctRealization.get(punctRealization.size() - 1).getWord().equals(Action.TOKEN_END)) {
                     punctRealization.add(new Action(Action.TOKEN_END, previousAttr));
                 }
+                return punctRealization;
+            }).map((punctRealization) -> {
                 punctRealizations.put(di, punctRealization);
+                return punctRealization;
+            }).forEachOrdered((punctRealization) -> {
                 for (int i = 0; i < punctRealization.size(); i++) {
                     Action a = punctRealization.get(i);
                     if (a.getAttribute().equals(Action.TOKEN_PUNCT)) {
                         boolean legal = true;
                         ArrayList<Action> surroundingActions = new ArrayList<>();
                         /*if (i - 3 >= 0) {
-                            surroundingActions.add(punctRealization.get(i - 3));
+                        surroundingActions.add(punctRealization.get(i - 3));
                         } else {
-                            surroundingActions.add(null);
+                        surroundingActions.add(null);
                         }*/
                         if (i - 2 >= 0) {
                             surroundingActions.add(punctRealization.get(i - 2));
@@ -2224,74 +2015,49 @@ public class Bagel extends DatasetParser {
                         }
                     }
                 }
-            }
-            HashSet<ArrayList<Action>> newRealizations = new HashSet<>();
-            for (ArrayList<Action> real : di.getEvalRealizations()) {
-                newRealizations.add(calculatedRealizationsCache.get(real));
-            }
-            di.setEvalRealizations(newRealizations);
-            di.setTrainRealization(calculatedRealizationsCache.get(di.getTrainRealization()));
-
-            for (ArrayList<Action> rr : di.getEvalRealizations()) {
-                for (Action key : rr) {
-                    if (key.getWord().trim().isEmpty()) {
-                        System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
-                        System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
-                        System.out.println("RR " + rr);
-                        System.out.println("RR " + key);
-                        System.exit(0);
-                    }
-                    if (key.getAttribute().equals("[]")
-                            || key.getAttribute().isEmpty()) {
-                        System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
-                        System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
-                        System.out.println("RR " + rr);
-                        System.out.println("RR " + key);
-                        System.exit(0);
-                    }
-                }
-            }
-
+            });
+            di.setDirectReferenceSequence(calculatedRealizationsCache.get(di.getDirectReferenceSequence()));
+            return di;
+        }).forEachOrdered((di) -> {
             /*HashSet<String> attrValuesToBeMentioned = new HashSet<>();
             for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-                int a = 0;
-                for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
-                    if (value.startsWith("\"x")) {
-                        value = "x" + a;
-                        a++;
-                    } else if (value.startsWith("\"")) {
-                        value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
-                    }
-                    attrValuesToBeMentioned.add(attribute + "=" + value);
-                }
+            int a = 0;
+            for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+            if (value.startsWith("\"x")) {
+            value = "x" + a;
+            a++;
+            } else if (value.startsWith("\"")) {
+            value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
             }
-            for (Action key : di.getTrainRealization()) {
-                attrValuesToBeMentioned.remove(key.getAttribute());
-                if (key.getWord().trim().isEmpty()) {
-                    System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
-                    System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
-                    System.out.println("RR " + key);
-                    System.exit(0);
-                }
-                if (key.getAttribute().equals("[]")
-                        || key.getAttribute().isEmpty()) {
-                    System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
-                    System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
-                    System.out.println("RR " + di.getTrainRealization());
-                    System.out.println("RR " + key);
-                    System.exit(0);
-                }
+            attrValuesToBeMentioned.add(attribute + "=" + value);
+            }
+            }
+            for (Action key : di.getDirectReferenceSequence()) {
+            attrValuesToBeMentioned.remove(key.getAttribute());
+            if (key.getWord().trim().isEmpty()) {
+            System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
+            System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
+            System.out.println("RR " + key);
+            System.exit(0);
+            }
+            if (key.getAttribute().equals("[]")
+            || key.getAttribute().isEmpty()) {
+            System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
+            System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
+            System.out.println("RR " + di.getDirectReferenceSequence());
+            System.out.println("RR " + key);
+            System.exit(0);
+            }
             }
             if (!attrValuesToBeMentioned.isEmpty()) {
-                System.out.println("EE " + di.getMeaningRepresentation().getMRstr());
-                System.out.println("EE " + di.getMeaningRepresentation().getAttributes());
-                System.out.println("EE " + di.getTrainRealization());
-                System.out.println(attrValuesToBeMentioned);
+            System.out.println("EE " + di.getMeaningRepresentation().getMRstr());
+            System.out.println("EE " + di.getMeaningRepresentation().getAttributes());
+            System.out.println("EE " + di.getDirectReferenceSequence());
+            System.out.println(attrValuesToBeMentioned);
             }*/
-        }
-        for (DatasetInstance di : punctRealizations.keySet()) {
-            ArrayList<Action> punctRealization = punctRealizations.get(di);
-            for (ArrayList<Action> surrounds : punctPatterns.keySet()) {
+        });
+        punctRealizations.keySet().stream().map((di) -> punctRealizations.get(di)).forEachOrdered((punctRealization) -> {
+            punctPatterns.keySet().forEach((surrounds) -> {
                 int beforeNulls = 0;
                 if (surrounds.get(0) == null) {
                     beforeNulls++;
@@ -2332,9 +2098,9 @@ public class Bagel extends DatasetParser {
                         }
                     }
                 }
-            }
-        }
-        for (ArrayList<Action> punct : punctPatterns.keySet()) {
+            });
+        });
+        punctPatterns.keySet().forEach((punct) -> {
             Action bestAction = null;
             int bestCount = 0;
             for (Action a : punctPatterns.get(punct).keySet()) {
@@ -2349,7 +2115,7 @@ public class Bagel extends DatasetParser {
             if (!bestAction.getWord().isEmpty()) {
                 punctuationPatterns.put(punct, bestAction);
             }
-        }
+        });
     }
 
     /**
@@ -2363,19 +2129,20 @@ public class Bagel extends DatasetParser {
      * @param availableAttributeActions
      * @return
      */
-    public Instance createAttrInstance(String predicate, String bestAction, ArrayList<String> previousGeneratedAttrs, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesToBeMentioned, MeaningRepresentation MR, HashMap<String, HashSet<String>> availableAttributeActions) {
+    @Override
+    public Instance createContentInstance(String predicate, String bestAction, ArrayList<String> previousGeneratedAttrs, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesToBeMentioned, MeaningRepresentation MR, HashMap<String, HashSet<String>> availableAttributeActions) {
         TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
 
         if (!bestAction.isEmpty()) {
             //COSTS
             if (bestAction.equals(Action.TOKEN_END)) {
                 costs.put(Action.TOKEN_END, 0.0);
-                for (String action : availableAttributeActions.get(predicate)) {
+                availableAttributeActions.get(predicate).forEach((action) -> {
                     costs.put(action, 1.0);
-                }
+                });
             } else if (!bestAction.equals("@TOK@")) {
                 costs.put(Action.TOKEN_END, 1.0);
-                for (String action : availableAttributeActions.get(predicate)) {
+                availableAttributeActions.get(predicate).forEach((action) -> {
                     String attr = bestAction;
                     if (bestAction.contains("=")) {
                         attr = bestAction.substring(0, bestAction.indexOf('=')).toLowerCase().trim();
@@ -2385,10 +2152,10 @@ public class Bagel extends DatasetParser {
                     } else {
                         costs.put(action, 1.0);
                     }
-                }
+                });
             }
         }
-        return createAttrInstanceWithCosts(predicate, costs, previousGeneratedAttrs, attrValuesAlreadyMentioned, attrValuesToBeMentioned, availableAttributeActions, MR);
+        return createContentInstanceWithCosts(predicate, costs, previousGeneratedAttrs, attrValuesAlreadyMentioned, attrValuesToBeMentioned, availableAttributeActions, MR);
     }
 
     /**
@@ -2402,20 +2169,19 @@ public class Bagel extends DatasetParser {
      * @param MR
      * @return
      */
-    public Instance createAttrInstanceWithCosts(String predicate, TObjectDoubleHashMap<String> costs, ArrayList<String> previousGeneratedAttrs, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesToBeMentioned, HashMap<String, HashSet<String>> availableAttributeActions, MeaningRepresentation MR) {
+    @Override
+    public Instance createContentInstanceWithCosts(String predicate, TObjectDoubleHashMap<String> costs, ArrayList<String> previousGeneratedAttrs, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesToBeMentioned, HashMap<String, HashSet<String>> availableAttributeActions, MeaningRepresentation MR) {
         TObjectDoubleHashMap<String> generalFeatures = new TObjectDoubleHashMap<>();
         HashMap<String, TObjectDoubleHashMap<String>> valueSpecificFeatures = new HashMap<>();
-        for (String action : availableAttributeActions.get(predicate)) {
+        availableAttributeActions.get(predicate).forEach((action) -> {
             valueSpecificFeatures.put(action, new TObjectDoubleHashMap<String>());
-        }
+        });
 
         ArrayList<String> mentionedAttrValues = new ArrayList<>();
-        for (String attrValue : previousGeneratedAttrs) {
-            if (!attrValue.equals(Action.TOKEN_END)
-                    && !attrValue.equals(Action.TOKEN_START)) {
-                mentionedAttrValues.add(attrValue);
-            }
-        }
+        previousGeneratedAttrs.stream().filter((attrValue) -> (!attrValue.equals(Action.TOKEN_END)
+                && !attrValue.equals(Action.TOKEN_START))).forEachOrdered((attrValue) -> {
+                    mentionedAttrValues.add(attrValue);
+        });
 
         for (int j = 1; j <= 1; j++) {
             String previousAttrValue = "@@";
@@ -2489,19 +2255,17 @@ public class Bagel extends DatasetParser {
             generalFeatures.put("feature_attrValue_allreadyMentioned_" + mentionedAttrValues.get(i), 1.0);
         }
         //If arguments should still be generated or not
-        for (String attrValue : attrValuesToBeMentioned) {
-            if (!attrValue.endsWith("placetoeat")) {
-                generalFeatures.put("feature_attrValue_toBeMentioned_" + attrValue, 1.0);
-            }
-        }
+        attrValuesToBeMentioned.stream().filter((attrValue) -> (!attrValue.endsWith("placetoeat"))).forEachOrdered((attrValue) -> {
+            generalFeatures.put("feature_attrValue_toBeMentioned_" + attrValue, 1.0);
+        });
         //Which attrs are in the MR and which are not
-        for (String attribute : availableAttributeActions.get(predicate)) {
+        availableAttributeActions.get(predicate).forEach((attribute) -> {
             if (MR.getAttributes().keySet().contains(attribute)) {
                 generalFeatures.put("feature_attr_inMR_" + attribute, 1.0);
             } else {
                 generalFeatures.put("feature_attr_notInMR_" + attribute, 1.0);
             }
-        }
+        });
 
         ArrayList<String> mentionedAttrs = new ArrayList<>();
         for (int i = 0; i < mentionedAttrValues.size(); i++) {
@@ -2516,16 +2280,16 @@ public class Bagel extends DatasetParser {
             //}
         }
         HashSet<String> attrsToBeMentioned = new HashSet<>();
-        for (String attrValue : attrValuesToBeMentioned) {
-            if (!attrValue.endsWith("placetoeat")) {
-                String attr = attrValue;
-                if (attr.contains("=")
-                        && !attr.equals("type=placetoeat")) {
-                    attr = attrValue.substring(0, attrValue.indexOf('='));
-                }
-                attrsToBeMentioned.add(attr);
+        attrValuesToBeMentioned.stream().filter((attrValue) -> (!attrValue.endsWith("placetoeat"))).map((attrValue) -> {
+            String attr = attrValue;
+            if (attr.contains("=")
+                    && !attr.equals("type=placetoeat")) {
+                attr = attrValue.substring(0, attrValue.indexOf('='));
             }
-        }
+            return attr;
+        }).forEachOrdered((attr) -> {
+            attrsToBeMentioned.add(attr);
+        });
 
         for (int j = 1; j <= 1; j++) {
             String previousAttr = "";
@@ -2576,19 +2340,16 @@ public class Bagel extends DatasetParser {
         generalFeatures.put("feature_attr_bigramAttr54_" + bigramAttr54, 1.0);
         generalFeatures.put("feature_attr_bigramAttr43_" + bigramAttr43, 1.0);
         generalFeatures.put("feature_attr_bigramAttr32_" + bigramAttr32, 1.0);
-        
         String bigramAttrSkip53 = prev5Attr + "|" + prev3Attr;
         String bigramAttrSkip42 = prev4Attr + "|" + prev2Attr;
         String bigramAttrSkip31 = prev3Attr + "|" + prevAttr;
         generalFeatures.put("feature_attr_bigramAttrSkip53_" + bigramAttrSkip53, 1.0);
         generalFeatures.put("feature_attr_bigramAttrSkip42_" + bigramAttrSkip42, 1.0);
         generalFeatures.put("feature_attr_bigramAttrSkip31_" + bigramAttrSkip31, 1.0);
-        
         String trigramAttr543 = prev5Attr + "|" + prev4Attr + "|" + prev3Attr;
         String trigramAttr432 = prev4Attr + "|" + prev3Attr + "|" + prev2Attr;
         generalFeatures.put("feature_attr_trigramAttr543_" + trigramAttr543, 1.0);
         generalFeatures.put("feature_attr_trigramAttr432_" + trigramAttr432, 1.0);
-        
         String trigramAttrSkip542 = prev5Attr + "|" + prev4Attr + "|" + prev2Attr;
         String trigramAttrSkip532 = prev5Attr + "|" + prev3Attr + "|" + prev2Attr;
         String trigramAttrSkip431 = prev4Attr + "|" + prev3Attr + "|" + prevAttr;
@@ -2597,79 +2358,73 @@ public class Bagel extends DatasetParser {
         generalFeatures.put("feature_attr_trigramAttrSkip532_" + trigramAttrSkip532, 1.0);
         generalFeatures.put("feature_attr_trigramAttrSkip431_" + trigramAttrSkip431, 1.0);
         generalFeatures.put("feature_attr_trigramAttrSkip421_" + trigramAttrSkip421, 1.0);*/
- /*ArrayList<Action> generatedWords = new ArrayList<>();
+        /*ArrayList<Action> generatedWords = new ArrayList<>();
         ArrayList<Action> generatedWordsInPreviousAttrValue = new ArrayList<>();
         if (!mentionedAttrValues.isEmpty()) {
-            String previousAttrValue = mentionedAttrValues.get(mentionedAttrValues.size() - 1);
-            for (int i = 0; i < previousGeneratedWords.size(); i++) {
-                Action a = previousGeneratedWords.get(i);
-                if (!a.getWord().equals(Action.TOKEN_START)
-                        && !a.getWord().equals(Action.TOKEN_END)) {
-                    generatedWords.add(a);
-                    if (a.getAttribute().equals(previousAttrValue)) {
-                        generatedWordsInPreviousAttrValue.add(a);
-                    }
-                }
-            }
+        String previousAttrValue = mentionedAttrValues.get(mentionedAttrValues.size() - 1);
+        for (int i = 0; i < previousGeneratedWords.size(); i++) {
+        Action a = previousGeneratedWords.get(i);
+        if (!a.getWord().equals(Action.TOKEN_START)
+        && !a.getWord().equals(Action.TOKEN_END)) {
+        generatedWords.add(a);
+        if (a.getAttribute().equals(previousAttrValue)) {
+        generatedWordsInPreviousAttrValue.add(a);
+        }
+        }
+        }
         }
         //Previous word features
         for (int j = 1; j <= 1; j++) {
-            String previousWord = "@@";
-            if (generatedWords.size() - j >= 0) {
-                previousWord = generatedWords.get(generatedWords.size() - j).getWord().trim();
-            }
-            generalFeatures.put("feature_word_" + j + "_" + previousWord.toLowerCase(), 1.0);
+        String previousWord = "@@";
+        if (generatedWords.size() - j >= 0) {
+        previousWord = generatedWords.get(generatedWords.size() - j).getWord().trim();
+        }
+        generalFeatures.put("feature_word_" + j + "_" + previousWord.toLowerCase(), 1.0);
         }
         String prevWord = "@@";
         if (generatedWords.size() - 1 >= 0) {
-            prevWord = generatedWords.get(generatedWords.size() - 1).getWord().trim();
+        prevWord = generatedWords.get(generatedWords.size() - 1).getWord().trim();
         }
         String prev2Word = "@@";
         if (generatedWords.size() - 2 >= 0) {
-            prev2Word = generatedWords.get(generatedWords.size() - 2).getWord().trim();
+        prev2Word = generatedWords.get(generatedWords.size() - 2).getWord().trim();
         }
         String prev3Word = "@@";
         if (generatedWords.size() - 3 >= 0) {
-            prev3Word = generatedWords.get(generatedWords.size() - 3).getWord().trim();
+        prev3Word = generatedWords.get(generatedWords.size() - 3).getWord().trim();
         }
         String prev4Word = "@@";
         if (generatedWords.size() - 4 >= 0) {
-            prev4Word = generatedWords.get(generatedWords.size() - 4).getWord().trim();
+        prev4Word = generatedWords.get(generatedWords.size() - 4).getWord().trim();
         }
         String prev5Word = "@@";
         if (generatedWords.size() - 5 >= 0) {
-            prev5Word = generatedWords.get(generatedWords.size() - 5).getWord().trim();
+        prev5Word = generatedWords.get(generatedWords.size() - 5).getWord().trim();
         }
-
         String prevBigram = prev2Word + "|" + prevWord;
         String prevTrigram = prev3Word + "|" + prev2Word + "|" + prevWord;
         String prev4gram = prev4Word + "|" + prev3Word + "|" + prev2Word + "|" + prevWord;
         String prev5gram = prev5Word + "|" + prev4Word + "|" + prev3Word + "|" + prev2Word + "|" + prevWord;
-
         generalFeatures.put("feature_word_bigram_" + prevBigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_word_trigram_" + prevTrigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_word_4gram_" + prev4gram.toLowerCase(), 1.0);
         generalFeatures.put("feature_word_5gram_" + prev5gram.toLowerCase(), 1.0);*/
-
- /*String bigramWord54 = prev5Word + "|" + prev4Word;
+        /*String bigramWord54 = prev5Word + "|" + prev4Word;
         String bigramWord43 = prev4Word + "|" + prev3Word;
         String bigramWord32 = prev3Word + "|" + prev2Word;
         generalFeatures.put("feature_word_bigramWord54_" + bigramWord54, 1.0);
         generalFeatures.put("feature_word_bigramWord43_" + bigramWord43, 1.0);
         generalFeatures.put("feature_word_bigramWord32_" + bigramWord32, 1.0);
-        
         String bigramWordSkip53 = prev5Word + "|" + prev3Word;
         String bigramWordSkip42 = prev4Word + "|" + prev2Word;
         String bigramWordSkip31 = prev3Word + "|" + prevWord;
         generalFeatures.put("feature_word_bigramWordSkip53_" + bigramWordSkip53, 1.0);
         generalFeatures.put("feature_word_bigramWordSkip42_" + bigramWordSkip42, 1.0);
         generalFeatures.put("feature_word_bigramWordSkip31_" + bigramWordSkip31, 1.0);
-        
         String trigramWord543 = prev5Word + "|" + prev4Word + "|" + prev3Word;
         String trigramWord432 = prev4Word + "|" + prev3Word + "|" + prev2Word;
         generalFeatures.put("feature_word_trigramWord543_" + trigramWord543, 1.0);
         generalFeatures.put("feature_word_trigramWord432_" + trigramWord432, 1.0);
-        
         String trigramWordSkip542 = prev5Word + "|" + prev4Word + "|" + prev2Word;
         String trigramWordSkip532 = prev5Word + "|" + prev3Word + "|" + prev2Word;
         String trigramWordSkip431 = prev4Word + "|" + prev3Word + "|" + prevWord;
@@ -2680,62 +2435,56 @@ public class Bagel extends DatasetParser {
         generalFeatures.put("feature_word_trigramWordSkip421_" + trigramWordSkip421, 1.0);*/
         //Previous word in same as current attrValue features
         /*for (int j = 1; j <= 1; j++) {
-            String previousCurrentAttrValueWord = "@@";
-            if (generatedWordsInPreviousAttrValue.size() - j >= 0) {
-                previousCurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - j).getWord().trim();
-            }
-            generalFeatures.put("feature_currentAttrValueWord_" + j + "_" + previousCurrentAttrValueWord.toLowerCase(), 1.0);
+        String previousCurrentAttrValueWord = "@@";
+        if (generatedWordsInPreviousAttrValue.size() - j >= 0) {
+        previousCurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - j).getWord().trim();
+        }
+        generalFeatures.put("feature_currentAttrValueWord_" + j + "_" + previousCurrentAttrValueWord.toLowerCase(), 1.0);
         }
         String prevCurrentAttrValueWord = "@@";
         if (generatedWordsInPreviousAttrValue.size() - 1 >= 0) {
-            prevCurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 1).getWord().trim();
+        prevCurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 1).getWord().trim();
         }
         String prev2CurrentAttrValueWord = "@@";
         if (generatedWordsInPreviousAttrValue.size() - 2 >= 0) {
-            prev2CurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 2).getWord().trim();
+        prev2CurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 2).getWord().trim();
         }
         String prev3CurrentAttrValueWord = "@@";
         if (generatedWordsInPreviousAttrValue.size() - 3 >= 0) {
-            prev3CurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 3).getWord().trim();
+        prev3CurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 3).getWord().trim();
         }
         String prev4CurrentAttrValueWord = "@@";
         if (generatedWordsInPreviousAttrValue.size() - 4 >= 0) {
-            prev4CurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 4).getWord().trim();
+        prev4CurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 4).getWord().trim();
         }
         String prev5CurrentAttrValueWord = "@@";
         if (generatedWordsInPreviousAttrValue.size() - 5 >= 0) {
-            prev5CurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 5).getWord().trim();
+        prev5CurrentAttrValueWord = generatedWordsInPreviousAttrValue.get(generatedWordsInPreviousAttrValue.size() - 5).getWord().trim();
         }
-
         String prevCurrentAttrValueBigram = prev2CurrentAttrValueWord + "|" + prevCurrentAttrValueWord;
         String prevCurrentAttrValueTrigram = prev3CurrentAttrValueWord + "|" + prev2CurrentAttrValueWord + "|" + prevCurrentAttrValueWord;
         String prevCurrentAttrValue4gram = prev4CurrentAttrValueWord + "|" + prev3CurrentAttrValueWord + "|" + prev2CurrentAttrValueWord + "|" + prevCurrentAttrValueWord;
         String prevCurrentAttrValue5gram = prev5CurrentAttrValueWord + "|" + prev4CurrentAttrValueWord + "|" + prev3CurrentAttrValueWord + "|" + prev2CurrentAttrValueWord + "|" + prevCurrentAttrValueWord;
-
         generalFeatures.put("feature_previousAttrValueWord_bigram_" + prevCurrentAttrValueBigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_previousAttrValueWord_trigram_" + prevCurrentAttrValueTrigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_previousAttrValueWord_4gram_" + prevCurrentAttrValue4gram.toLowerCase(), 1.0);
         generalFeatures.put("feature_previousAttrValueWord_5gram_" + prevCurrentAttrValue5gram.toLowerCase(), 1.0);*/
-
- /*String bigramCurrentAttrValueWord54 = prev5CurrentAttrValueWord + "|" + prev4CurrentAttrValueWord;
+        /*String bigramCurrentAttrValueWord54 = prev5CurrentAttrValueWord + "|" + prev4CurrentAttrValueWord;
         String bigramCurrentAttrValueWord43 = prev4CurrentAttrValueWord + "|" + prev3CurrentAttrValueWord;
         String bigramCurrentAttrValueWord32 = prev3CurrentAttrValueWord + "|" + prev2CurrentAttrValueWord;
         generalFeatures.put("feature_previousAttrValueWord_bigramCurrentAttrValueWord54_" + bigramCurrentAttrValueWord54, 1.0);
         generalFeatures.put("feature_previousAttrValueWord_bigramCurrentAttrValueWord43_" + bigramCurrentAttrValueWord43, 1.0);
         generalFeatures.put("feature_previousAttrValueWord_bigramCurrentAttrValueWord32_" + bigramCurrentAttrValueWord32, 1.0);
-        
         String bigramCurrentAttrValueWordSkip53 = prev5CurrentAttrValueWord + "|" + prev3CurrentAttrValueWord;
         String bigramCurrentAttrValueWordSkip42 = prev4CurrentAttrValueWord + "|" + prev2CurrentAttrValueWord;
         String bigramCurrentAttrValueWordSkip31 = prev3CurrentAttrValueWord + "|" + prevCurrentAttrValueWord;
         generalFeatures.put("feature_previousAttrValueWord_bigramCurrentAttrValueWordSkip53_" + bigramCurrentAttrValueWordSkip53, 1.0);
         generalFeatures.put("feature_previousAttrValueWord_bigramCurrentAttrValueWordSkip42_" + bigramCurrentAttrValueWordSkip42, 1.0);
         generalFeatures.put("feature_previousAttrValueWord_bigramCurrentAttrValueWordSkip31_" + bigramCurrentAttrValueWordSkip31, 1.0);
-        
         String trigramCurrentAttrValueWord543 = prev5CurrentAttrValueWord + "|" + prev4CurrentAttrValueWord + "|" + prev3CurrentAttrValueWord;
         String trigramCurrentAttrValueWord432 = prev4CurrentAttrValueWord + "|" + prev3CurrentAttrValueWord + "|" + prev2CurrentAttrValueWord;
         generalFeatures.put("feature_previousAttrValueWord_trigramCurrentAttrValueWord543_" + trigramCurrentAttrValueWord543, 1.0);
         generalFeatures.put("feature_previousAttrValueWord_trigramCurrentAttrValueWord432_" + trigramCurrentAttrValueWord432, 1.0);
-        
         String trigramCurrentAttrValueWordSkip542 = prev5CurrentAttrValueWord + "|" + prev4CurrentAttrValueWord + "|" + prev2CurrentAttrValueWord;
         String trigramCurrentAttrValueWordSkip532 = prev5CurrentAttrValueWord + "|" + prev3CurrentAttrValueWord + "|" + prev2CurrentAttrValueWord;
         String trigramCurrentAttrValueWordSkip431 = prev4CurrentAttrValueWord + "|" + prev3CurrentAttrValueWord + "|" + prevCurrentAttrValueWord;
@@ -2746,87 +2495,80 @@ public class Bagel extends DatasetParser {
         generalFeatures.put("feature_previousAttrValueWord_trigramCurrentAttrValueWordSkip421_" + trigramCurrentAttrValueWordSkip421, 1.0);*/
         //Previous Attr|Word features
         /*for (int j = 1; j <= 1; j++) {
-            String previousAttrWord = "@@";
-            if (generatedWords.size() - j >= 0) {
-                if (generatedWords.get(generatedWords.size() - j).getAttribute().contains("=")) {
-                    previousAttrWord = generatedWords.get(generatedWords.size() - j).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - j).getAttribute().indexOf('=')) + "|" + generatedWords.get(generatedWords.size() - j).getWord().trim();
-                } else {
-                    previousAttrWord = generatedWords.get(generatedWords.size() - j).getAttribute().trim() + "|" + generatedWords.get(generatedWords.size() - j).getWord().trim();
-                }
-            }
-            generalFeatures.put("feature_attrWord_" + j + "_" + previousAttrWord.toLowerCase(), 1.0);
+        String previousAttrWord = "@@";
+        if (generatedWords.size() - j >= 0) {
+        if (generatedWords.get(generatedWords.size() - j).getAttribute().contains("=")) {
+        previousAttrWord = generatedWords.get(generatedWords.size() - j).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - j).getAttribute().indexOf('=')) + "|" + generatedWords.get(generatedWords.size() - j).getWord().trim();
+        } else {
+        previousAttrWord = generatedWords.get(generatedWords.size() - j).getAttribute().trim() + "|" + generatedWords.get(generatedWords.size() - j).getWord().trim();
+        }
+        }
+        generalFeatures.put("feature_attrWord_" + j + "_" + previousAttrWord.toLowerCase(), 1.0);
         }
         String prevAttrWord = "@@";
         if (generatedWords.size() - 1 >= 0) {
-            if (generatedWords.get(generatedWords.size() - 1).getAttribute().contains("=")) {
-                prevAttrWord = generatedWords.get(generatedWords.size() - 1).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 1).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 1).getWord().trim();
-            } else {
-                prevAttrWord = generatedWords.get(generatedWords.size() - 1).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 1).getWord().trim();
-
-            }
+        if (generatedWords.get(generatedWords.size() - 1).getAttribute().contains("=")) {
+        prevAttrWord = generatedWords.get(generatedWords.size() - 1).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 1).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 1).getWord().trim();
+        } else {
+        prevAttrWord = generatedWords.get(generatedWords.size() - 1).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 1).getWord().trim();
+        }
         }
         String prev2AttrWord = "@@";
         if (generatedWords.size() - 2 >= 0) {
-            if (generatedWords.get(generatedWords.size() - 2).getAttribute().contains("=")) {
-                prev2AttrWord = generatedWords.get(generatedWords.size() - 2).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 2).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 2).getWord().trim();
-            } else {
-                prev2AttrWord = generatedWords.get(generatedWords.size() - 2).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 2).getWord().trim();
-            }
+        if (generatedWords.get(generatedWords.size() - 2).getAttribute().contains("=")) {
+        prev2AttrWord = generatedWords.get(generatedWords.size() - 2).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 2).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 2).getWord().trim();
+        } else {
+        prev2AttrWord = generatedWords.get(generatedWords.size() - 2).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 2).getWord().trim();
+        }
         }
         String prev3AttrWord = "@@";
         if (generatedWords.size() - 3 >= 0) {
-            if (generatedWords.get(generatedWords.size() - 3).getAttribute().contains("=")) {
-                prev3AttrWord = generatedWords.get(generatedWords.size() - 3).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 3).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 3).getWord().trim();
-            } else {
-                prev3AttrWord = generatedWords.get(generatedWords.size() - 3).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 3).getWord().trim();
-            }
+        if (generatedWords.get(generatedWords.size() - 3).getAttribute().contains("=")) {
+        prev3AttrWord = generatedWords.get(generatedWords.size() - 3).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 3).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 3).getWord().trim();
+        } else {
+        prev3AttrWord = generatedWords.get(generatedWords.size() - 3).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 3).getWord().trim();
+        }
         }
         String prev4AttrWord = "@@";
         if (generatedWords.size() - 4 >= 0) {
-            if (generatedWords.get(generatedWords.size() - 4).getAttribute().contains("=")) {
-                prev4AttrWord = generatedWords.get(generatedWords.size() - 4).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 4).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 4).getWord().trim();
-            } else {
-                prev4AttrWord = generatedWords.get(generatedWords.size() - 4).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 4).getWord().trim();
-            }
+        if (generatedWords.get(generatedWords.size() - 4).getAttribute().contains("=")) {
+        prev4AttrWord = generatedWords.get(generatedWords.size() - 4).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 4).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 4).getWord().trim();
+        } else {
+        prev4AttrWord = generatedWords.get(generatedWords.size() - 4).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 4).getWord().trim();
+        }
         }
         String prev5AttrWord = "@@";
         if (generatedWords.size() - 5 >= 0) {
-            if (generatedWords.get(generatedWords.size() - 5).getAttribute().contains("=")) {
-                prev5AttrWord = generatedWords.get(generatedWords.size() - 5).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 5).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 5).getWord().trim();
-            } else {
-                prev5AttrWord = generatedWords.get(generatedWords.size() - 5).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 5).getWord().trim();
-            }
+        if (generatedWords.get(generatedWords.size() - 5).getAttribute().contains("=")) {
+        prev5AttrWord = generatedWords.get(generatedWords.size() - 5).getAttribute().trim().substring(0, generatedWords.get(generatedWords.size() - 5).getAttribute().indexOf('=')) + ":" + generatedWords.get(generatedWords.size() - 5).getWord().trim();
+        } else {
+        prev5AttrWord = generatedWords.get(generatedWords.size() - 5).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 5).getWord().trim();
         }
-
+        }
         String prevAttrWordBigram = prev2AttrWord + "|" + prevAttrWord;
         String prevAttrWordTrigram = prev3AttrWord + "|" + prev2AttrWord + "|" + prevAttrWord;
         String prevAttrWord4gram = prev4AttrWord + "|" + prev3AttrWord + "|" + prev2AttrWord + "|" + prevAttrWord;
         String prevAttrWord5gram = prev5AttrWord + "|" + prev4AttrWord + "|" + prev3AttrWord + "|" + prev2AttrWord + "|" + prevAttrWord;
-
         generalFeatures.put("feature_attrWord_bigram_" + prevAttrWordBigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_attrWord_trigram_" + prevAttrWordTrigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_attrWord_4gram_" + prevAttrWord4gram.toLowerCase(), 1.0);
         generalFeatures.put("feature_attrWord_5gram_" + prevAttrWord5gram.toLowerCase(), 1.0);*/
-
- /*String bigramAttrWord54 = prev5AttrWord + "|" + prev4AttrWord;
+        /*String bigramAttrWord54 = prev5AttrWord + "|" + prev4AttrWord;
         String bigramAttrWord43 = prev4AttrWord + "|" + prev3AttrWord;
         String bigramAttrWord32 = prev3AttrWord + "|" + prev2AttrWord;
         generalFeatures.put("feature_attrWord_bigramAttrWord54_" + bigramAttrWord54, 1.0);
         generalFeatures.put("feature_attrWord_bigramAttrWord43_" + bigramAttrWord43, 1.0);
         generalFeatures.put("feature_attrWord_bigramAttrWord32_" + bigramAttrWord32, 1.0);
-        
         String bigramAttrWordSkip53 = prev5AttrWord + "|" + prev3AttrWord;
         String bigramAttrWordSkip42 = prev4AttrWord + "|" + prev2AttrWord;
         String bigramAttrWordSkip31 = prev3AttrWord + "|" + prevAttrWord;
         generalFeatures.put("feature_attrWord_bigramAttrWordSkip53_" + bigramAttrWordSkip53, 1.0);
         generalFeatures.put("feature_attrWord_bigramAttrWordSkip42_" + bigramAttrWordSkip42, 1.0);
         generalFeatures.put("feature_attrWord_bigramAttrWordSkip31_" + bigramAttrWordSkip31, 1.0);
-        
         String trigramAttrWord543 = prev5AttrWord + "|" + prev4AttrWord + "|" + prev3AttrWord;
         String trigramAttrWord432 = prev4AttrWord + "|" + prev3AttrWord + "|" + prev2AttrWord;
         generalFeatures.put("feature_attrWord_trigramAttrWord543_" + trigramAttrWord543, 1.0);
         generalFeatures.put("feature_attrWord_trigramAttrWord432_" + trigramAttrWord432, 1.0);
-        
         String trigramAttrWordSkip542 = prev5AttrWord + "|" + prev4AttrWord + "|" + prev2AttrWord;
         String trigramAttrWordSkip532 = prev5AttrWord + "|" + prev3AttrWord + "|" + prev2AttrWord;
         String trigramAttrWordSkip431 = prev4AttrWord + "|" + prev3AttrWord + "|" + prevAttrWord;
@@ -2863,74 +2605,66 @@ public class Bagel extends DatasetParser {
         if (generatedWords.size() - 5 >= 0) {
         prev5POS = generatedWords.get(generatedWords.size() - 5).getPOS().trim();
         }
-        
         String prevPOSBigram = prev2POS + "|" + prevPOS;
         String prevPOSTrigram = prev3POS + "|" + prev2POS + "|" + prevPOS;
         String prevPOS4gram = prev4POS + "|" + prev3POS + "|" + prev2POS + "|" + prevPOS;
         String prevPOS5gram = prev5POS + "|" + prev4POS + "|" + prev3POS + "|" + prev2POS + "|" + prevPOS;
-        
         generalFeatures.put("feature_POS_bigram_" + prevPOSBigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_POS_trigram_" + prevPOSTrigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_POS_4gram_" + prevPOS4gram.toLowerCase(), 1.0);
         generalFeatures.put("feature_POS_5gram_" + prevPOS5gram.toLowerCase(), 1.0);*/
         //Previous AttrValue|Word features
         /*for (int j = 1; j <= 1; j++) {
-            String previousAttrWord = "@@";
-            if (generatedWords.size() - j >= 0) {
-                previousAttrWord = generatedWords.get(generatedWords.size() - j).getAttribute().trim() + "|" + generatedWords.get(generatedWords.size() - j).getWord().trim();
-            }
-            generalFeatures.put("feature_attrValueWord_" + j + "_" + previousAttrWord.toLowerCase(), 1.0);
+        String previousAttrWord = "@@";
+        if (generatedWords.size() - j >= 0) {
+        previousAttrWord = generatedWords.get(generatedWords.size() - j).getAttribute().trim() + "|" + generatedWords.get(generatedWords.size() - j).getWord().trim();
+        }
+        generalFeatures.put("feature_attrValueWord_" + j + "_" + previousAttrWord.toLowerCase(), 1.0);
         }
         String prevAttrValueWord = "@@";
         if (generatedWords.size() - 1 >= 0) {
-            prevAttrValueWord = generatedWords.get(generatedWords.size() - 1).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 1).getWord().trim();
+        prevAttrValueWord = generatedWords.get(generatedWords.size() - 1).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 1).getWord().trim();
         }
         String prev2AttrValueWord = "@@";
         if (generatedWords.size() - 2 >= 0) {
-            prev2AttrValueWord = generatedWords.get(generatedWords.size() - 2).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 2).getWord().trim();
+        prev2AttrValueWord = generatedWords.get(generatedWords.size() - 2).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 2).getWord().trim();
         }
         String prev3AttrValueWord = "@@";
         if (generatedWords.size() - 3 >= 0) {
-            prev3AttrValueWord = generatedWords.get(generatedWords.size() - 3).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 3).getWord().trim();
+        prev3AttrValueWord = generatedWords.get(generatedWords.size() - 3).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 3).getWord().trim();
         }
         String prev4AttrValueWord = "@@";
         if (generatedWords.size() - 4 >= 0) {
-            prev4AttrValueWord = generatedWords.get(generatedWords.size() - 4).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 4).getWord().trim();
+        prev4AttrValueWord = generatedWords.get(generatedWords.size() - 4).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 4).getWord().trim();
         }
         String prev5AttrValueWord = "@@";
         if (generatedWords.size() - 5 >= 0) {
-            prev5AttrValueWord = generatedWords.get(generatedWords.size() - 5).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 5).getWord().trim();
+        prev5AttrValueWord = generatedWords.get(generatedWords.size() - 5).getAttribute().trim() + ":" + generatedWords.get(generatedWords.size() - 5).getWord().trim();
         }
-
         String prevAttrValueWordBigram = prev2AttrValueWord + "|" + prevAttrValueWord;
         String prevAttrValueWordTrigram = prev3AttrValueWord + "|" + prev2AttrValueWord + "|" + prevAttrValueWord;
         String prevAttrValueWord4gram = prev4AttrValueWord + "|" + prev3AttrValueWord + "|" + prev2AttrValueWord + "|" + prevAttrValueWord;
         String prevAttrValueWord5gram = prev5AttrValueWord + "|" + prev4AttrValueWord + "|" + prev3AttrValueWord + "|" + prev2AttrValueWord + "|" + prevAttrValueWord;
-
         generalFeatures.put("feature_attrValueWord_bigram_" + prevAttrValueWordBigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_attrValueWord_trigram_" + prevAttrValueWordTrigram.toLowerCase(), 1.0);
         generalFeatures.put("feature_attrValueWord_4gram_" + prevAttrValueWord4gram.toLowerCase(), 1.0);
         generalFeatures.put("feature_attrValueWord_5gram_" + prevAttrValueWord5gram.toLowerCase(), 1.0);*/
-
- /*String bigramAttrValueWord54 = prev5AttrValueWord + "|" + prev4AttrValueWord;
+        /*String bigramAttrValueWord54 = prev5AttrValueWord + "|" + prev4AttrValueWord;
         String bigramAttrValueWord43 = prev4AttrValueWord + "|" + prev3AttrValueWord;
         String bigramAttrValueWord32 = prev3AttrValueWord + "|" + prev2AttrValueWord;
         generalFeatures.put("feature_attrValueWord_bigramAttrValueWord54_" + bigramAttrValueWord54, 1.0);
         generalFeatures.put("feature_attrValueWord_bigramAttrValueWord43_" + bigramAttrValueWord43, 1.0);
         generalFeatures.put("feature_attrValueWord_bigramAttrValueWord32_" + bigramAttrValueWord32, 1.0);
-        
         String bigramAttrValueWordSkip53 = prev5AttrValueWord + "|" + prev3AttrValueWord;
         String bigramAttrValueWordSkip42 = prev4AttrValueWord + "|" + prev2AttrValueWord;
         String bigramAttrValueWordSkip31 = prev3AttrValueWord + "|" + prevAttrValueWord;
         generalFeatures.put("feature_attrValueWord_bigramAttrValueWordSkip53_" + bigramAttrValueWordSkip53, 1.0);
         generalFeatures.put("feature_attrValueWord_bigramAttrValueWordSkip42_" + bigramAttrValueWordSkip42, 1.0);
         generalFeatures.put("feature_attrValueWord_bigramAttrValueWordSkip31_" + bigramAttrValueWordSkip31, 1.0);
-        
         String trigramAttrValueWord543 = prev5AttrValueWord + "|" + prev4AttrValueWord + "|" + prev3AttrValueWord;
         String trigramAttrValueWord432 = prev4AttrValueWord + "|" + prev3AttrValueWord + "|" + prev2AttrValueWord;
         generalFeatures.put("feature_attrValueWord_trigramAttrValueWord543_" + trigramAttrValueWord543, 1.0);
         generalFeatures.put("feature_attrValueWord_trigramAttrValueWord432_" + trigramAttrValueWord432, 1.0);
-        
         String trigramAttrValueWordSkip542 = prev5AttrValueWord + "|" + prev4AttrValueWord + "|" + prev2AttrValueWord;
         String trigramAttrValueWordSkip532 = prev5AttrValueWord + "|" + prev3AttrValueWord + "|" + prev2AttrValueWord;
         String trigramAttrValueWordSkip431 = prev4AttrValueWord + "|" + prev3AttrValueWord + "|" + prevAttrValueWord;
@@ -2939,8 +2673,7 @@ public class Bagel extends DatasetParser {
         generalFeatures.put("feature_attrValueWord_trigramAttrValueWordSkip532_" + trigramAttrValueWordSkip532, 1.0);
         generalFeatures.put("feature_attrValueWord_trigramAttrValueWordSkip431_" + trigramAttrValueWordSkip431, 1.0);
         generalFeatures.put("feature_attrValueWord_trigramAttrValueWordSkip421_" + trigramAttrValueWordSkip421, 1.0);*/
-
- /*
+        /*
         System.out.println("5AV: " + prev5gramAttrValue);
         System.out.println("5A: " + prev5gramAttr);
         System.out.println("MA: " + mentionedAttrs);
@@ -2950,13 +2683,13 @@ public class Bagel extends DatasetParser {
         System.out.println(costs);
         System.out.println("==============================");*/
         //If arguments have been generated or not
-        for (String attr : attrValuesAlreadyMentioned) {
+        attrValuesAlreadyMentioned.forEach((attr) -> {
             generalFeatures.put("feature_attr_alreadyMentioned_" + attr, 1.0);
-        }
+        });
         //If arguments should still be generated or not
-        for (String attr : attrsToBeMentioned) {
+        attrsToBeMentioned.forEach((attr) -> {
             generalFeatures.put("feature_attr_toBeMentioned_" + attr, 1.0);
-        }
+        });
 
         //Attr specific features (and global features)
         for (String action : availableAttributeActions.get(predicate)) {
@@ -2986,12 +2719,10 @@ public class Bagel extends DatasetParser {
                     valueSpecificFeatures.get(action).put("global_feature_specific_attrNotFollowingSameAttr", 1.0);
                 }
                 //Is attr already mentioned
-                for (String attrValue : attrValuesAlreadyMentioned) {
-                    if (attrValue.substring(0, attrValue.indexOf('=')).equals(action)) {
-                        //valueSpecificFeatures.get(action).put("feature_specific_attrAlreadyMentioned", 1.0);
-                        valueSpecificFeatures.get(action).put("global_feature_specific_attrAlreadyMentioned", 1.0);
-                    }
-                }
+                attrValuesAlreadyMentioned.stream().filter((attrValue) -> (attrValue.substring(0, attrValue.indexOf('=')).equals(action))).forEachOrdered((_item) -> {
+                    //valueSpecificFeatures.get(action).put("feature_specific_attrAlreadyMentioned", 1.0);
+                    valueSpecificFeatures.get(action).put("global_feature_specific_attrAlreadyMentioned", 1.0);
+                });
                 //Is attr to be mentioned
                 boolean toBeMentioned = false;
                 for (String attrValue : attrValuesToBeMentioned) {
@@ -3006,15 +2737,13 @@ public class Bagel extends DatasetParser {
                 }
             }
             HashSet<String> keys = new HashSet<>(valueSpecificFeatures.get(action).keySet());
-            for (String feature1 : keys) {
-                for (String feature2 : keys) {
-                    if (valueSpecificFeatures.get(action).get(feature1) == 1.0
-                            && valueSpecificFeatures.get(action).get(feature2) == 1.0
-                            && feature1.compareTo(feature2) < 0) {
-                        valueSpecificFeatures.get(action).put(feature1 + "&&" + feature2, 1.0);
-                    }
-                }
-            }
+            keys.forEach((feature1) -> {
+                keys.stream().filter((feature2) -> (valueSpecificFeatures.get(action).get(feature1) == 1.0
+                        && valueSpecificFeatures.get(action).get(feature2) == 1.0
+                        && feature1.compareTo(feature2) < 0)).forEachOrdered((feature2) -> {
+                            valueSpecificFeatures.get(action).put(feature1 + "&&" + feature2, 1.0);
+                });
+            });
             if (useLMs) {
                 String nextValue = chooseNextValue(action, attrValuesToBeMentioned);
                 if (nextValue.isEmpty() && !action.equals(Action.TOKEN_END)) {
@@ -3066,6 +2795,7 @@ public class Bagel extends DatasetParser {
      * @param availableWordActions
      * @return
      */
+    @Override
     public Instance createWordInstance(String predicate, Action bestAction, ArrayList<String> previousGeneratedAttributes, ArrayList<Action> previousGeneratedWords, ArrayList<String> nextGeneratedAttributes, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesThatFollow, boolean wasValueMentioned, HashMap<String, HashSet<Action>> availableWordActions) {
         TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
         if (!bestAction.getWord().trim().isEmpty()) {
@@ -3105,6 +2835,7 @@ public class Bagel extends DatasetParser {
      * @param availableWordActions
      * @return
      */
+    @Override
     public Instance createWordInstanceWithCosts(String predicate, String currentAttrValue, TObjectDoubleHashMap<String> costs, ArrayList<String> generatedAttributes, ArrayList<Action> previousGeneratedWords, ArrayList<String> nextGeneratedAttributes, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesThatFollow, boolean wasValueMentioned, HashMap<String, HashSet<Action>> availableWordActions) {
         String currentAttr = currentAttrValue;
         String currentValue = "";
@@ -3735,31 +3466,33 @@ public class Bagel extends DatasetParser {
             //generalFeatures.put("feature_wasValueMentioned_false", 1.0);
         }
         HashSet<String> valuesThatFollow = new HashSet<>();
-        for (String attrValue : attrValuesThatFollow) {
-            if (!attrValue.endsWith("placetoeat")) {
-                generalFeatures.put("feature_attrValuesThatFollow_" + attrValue.toLowerCase(), 1.0);
-                if (attrValue.contains("=")) {
-                    String v = attrValue.substring(attrValue.indexOf('=') + 1);
-                    if (v.matches("[xX][0-9]+")) {
-                        String attr = attrValue.substring(0, attrValue.indexOf('='));
-                        valuesThatFollow.add(Action.TOKEN_X + attr + "_" + v.substring(1));
-                    } else {
-                        valuesThatFollow.add(v);
-                    }
-                    generalFeatures.put("feature_attrsThatFollow_" + attrValue.substring(0, attrValue.indexOf('=')).toLowerCase(), 1.0);
+        attrValuesThatFollow.stream().filter((attrValue) -> (!attrValue.endsWith("placetoeat"))).map((attrValue) -> {
+            generalFeatures.put("feature_attrValuesThatFollow_" + attrValue.toLowerCase(), 1.0);
+            return attrValue;
+        }).forEachOrdered((attrValue) -> {
+            if (attrValue.contains("=")) {
+                String v = attrValue.substring(attrValue.indexOf('=') + 1);
+                if (v.matches("[xX][0-9]+")) {
+                    String attr = attrValue.substring(0, attrValue.indexOf('='));
+                    valuesThatFollow.add(Action.TOKEN_X + attr + "_" + v.substring(1));
                 } else {
-                    generalFeatures.put("feature_attrsThatFollow_" + attrValue.toLowerCase(), 1.0);
+                    valuesThatFollow.add(v);
                 }
+                generalFeatures.put("feature_attrsThatFollow_" + attrValue.substring(0, attrValue.indexOf('=')).toLowerCase(), 1.0);
+            } else {
+                generalFeatures.put("feature_attrsThatFollow_" + attrValue.toLowerCase(), 1.0);
             }
-        }
+        });
         if (valuesThatFollow.isEmpty()) {
             generalFeatures.put("feature_noAttrsFollow", 1.0);
         } else {
             generalFeatures.put("feature_noAttrsFollow", 0.0);
         }
         HashSet<String> mentionedValues = new HashSet<>();
-        for (String attrValue : attrValuesAlreadyMentioned) {
+        attrValuesAlreadyMentioned.stream().map((attrValue) -> {
             generalFeatures.put("feature_attrValuesAlreadyMentioned_" + attrValue.toLowerCase(), 1.0);
+            return attrValue;
+        }).forEachOrdered((attrValue) -> {
             if (attrValue.contains("=")) {
                 generalFeatures.put("feature_attrsAlreadyMentioned_" + attrValue.substring(0, attrValue.indexOf('=')).toLowerCase(), 1.0);
                 String v = attrValue.substring(attrValue.indexOf('=') + 1);
@@ -3772,7 +3505,7 @@ public class Bagel extends DatasetParser {
             } else {
                 generalFeatures.put("feature_attrsAlreadyMentioned_" + attrValue.toLowerCase(), 1.0);
             }
-        }
+        });
 
         /*System.out.println("5W: " + prev5gram);
         //System.out.println("5AW: " + prevAttrWord5gram);
@@ -3792,7 +3525,7 @@ public class Bagel extends DatasetParser {
                 valueSpecificFeatures.get(action.getAction()).put("global_feature_specific_notSameAsPreviousWord", 1.0);
             }
             //Has word appeared in the same attrValue before
-            for (Action previousAction : generatedWords) {
+            generatedWords.forEach((previousAction) -> {
                 if (previousAction.getWord().equals(action.getWord())
                         && previousAction.getAttribute().equals(currentAttrValue)) {
                     //valueSpecificFeatures.get(action.getWord()).put("feature_specific_appearedInSameAttrValue", 1.0);
@@ -3800,26 +3533,24 @@ public class Bagel extends DatasetParser {
                 } else {
                     //valueSpecificFeatures.get(action.getWord()).put("global_feature_specific_notAppearedInSameAttrValue", 1.0);
                 }
-            }
+            });
             //Has word appeared before
-            for (Action previousAction : generatedWords) {
+            generatedWords.forEach((previousAction) -> {
                 if (previousAction.getWord().equals(action.getWord())) {
                     //valueSpecificFeatures.get(action.getWord()).put("feature_specific_appeared", 1.0);
                     valueSpecificFeatures.get(action.getAction()).put("global_feature_specific_appeared", 1.0);
                 } else {
                     //valueSpecificFeatures.get(action.getWord()).put("global_feature_specific_notAppeared", 1.0);
                 }
-            }
+            });
             HashSet<String> keys = new HashSet<>(valueSpecificFeatures.get(action.getAction()).keySet());
-            for (String feature1 : keys) {
-                for (String feature2 : keys) {
-                    if (valueSpecificFeatures.get(action.getAction()).get(feature1) == 1.0
-                            && valueSpecificFeatures.get(action.getAction()).get(feature2) == 1.0
-                            && feature1.compareTo(feature2) < 0) {
-                        valueSpecificFeatures.get(action.getAction()).put(feature1 + "&&" + feature2, 1.0);
-                    }
-                }
-            }
+            keys.forEach((feature1) -> {
+                keys.stream().filter((feature2) -> (valueSpecificFeatures.get(action.getAction()).get(feature1) == 1.0
+                        && valueSpecificFeatures.get(action.getAction()).get(feature2) == 1.0
+                        && feature1.compareTo(feature2) < 0)).forEachOrdered((feature2) -> {
+                            valueSpecificFeatures.get(action.getAction()).put(feature1 + "&&" + feature2, 1.0);
+                });
+            });
             if (!action.getWord().startsWith(Action.TOKEN_X)) {
                 for (String value : valueAlignments.keySet()) {
                     for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
@@ -3999,12 +3730,13 @@ public class Bagel extends DatasetParser {
      * @param wordSequence
      * @return
      */
+    @Override
     public String postProcessWordSequence(DatasetInstance di, ArrayList<Action> wordSequence) {
         HashSet<ArrayList<Action>> matched = new HashSet<>();
         ArrayList<Action> processedWordSequence = new ArrayList<>();
-        for (Action act : wordSequence) {
+        wordSequence.forEach((act) -> {
             processedWordSequence.add(new Action(act));
-        }
+        });
         if (!processedWordSequence.isEmpty()
                 && processedWordSequence.get(processedWordSequence.size() - 1).getWord().equals(Action.TOKEN_END)
                 && processedWordSequence.get(processedWordSequence.size() - 1).getAttribute().equals(Action.TOKEN_END)) {
@@ -4012,7 +3744,7 @@ public class Bagel extends DatasetParser {
 
         }
 
-        for (ArrayList<Action> surrounds : punctuationPatterns.keySet()) {
+        punctuationPatterns.keySet().forEach((surrounds) -> {
             int beforeNulls = 0;
             if (surrounds.get(0) == null) {
                 beforeNulls++;
@@ -4049,7 +3781,7 @@ public class Bagel extends DatasetParser {
                     processedWordSequence.add(i + 2, punctuationPatterns.get(surrounds));
                 }
             }
-        }
+        });
         boolean isLastPunct = true;
         if (processedWordSequence.contains(new Action("and", ""))) {
             for (int i = processedWordSequence.size() - 1; i > 0; i--) {
@@ -4068,12 +3800,10 @@ public class Bagel extends DatasetParser {
         }
 
         ArrayList<Action> cleanActionList = new ArrayList<>();
-        for (Action action : processedWordSequence) {
-            if (!action.getWord().equals(Action.TOKEN_START)
-                    && !action.getWord().equals(Action.TOKEN_END)) {
-                cleanActionList.add(action);
-            }
-        }
+        processedWordSequence.stream().filter((action) -> (!action.getWord().equals(Action.TOKEN_START)
+                && !action.getWord().equals(Action.TOKEN_END))).forEachOrdered((action) -> {
+                    cleanActionList.add(action);
+        });
 
         String predictedWordSequence = " ";
         for (Action action : cleanActionList) {
@@ -4110,7 +3840,6 @@ public class Bagel extends DatasetParser {
         if (predictedWordSequence.startsWith(",")) {
             System.out.println(wordSequence);
             System.out.println(matched);
-            System.out.println(predictedWordSequence);
         }
         return predictedWordSequence;
     }
@@ -4121,7 +3850,8 @@ public class Bagel extends DatasetParser {
      * @param refSeq
      * @return
      */
-    public String postProcessRef(DatasetInstance di, ArrayList<Action> refSeq) {
+    @Override
+    public String postProcessRef(MeaningRepresentation mr, ArrayList<Action> refSeq) {
         String cleanedWords = "";
         for (Action action : refSeq) {
             if (!action.equals(new Action(Action.TOKEN_START, ""))
@@ -4134,7 +3864,7 @@ public class Bagel extends DatasetParser {
             }
         }
         cleanedWords = cleanedWords.trim();
-        if (di.getMeaningRepresentation().getPredicate().startsWith("?")
+        if (mr.getPredicate().startsWith("?")
                 && !cleanedWords.endsWith("?")
                 && !cleanedWords.endsWith(".")) {
             cleanedWords = cleanedWords.trim() + "?";
@@ -4199,7 +3929,7 @@ public class Bagel extends DatasetParser {
                     attrValuesToBeMentioned.remove(predictedAttr);
                 }
             } else if (!attrValuesToBeMentioned.isEmpty()) {
-                Instance attrTrainingVector = createAttrInstance(predicate, "@TOK@", predictedAttrValues, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), availableContentActions);
+                Instance attrTrainingVector = createContentInstance(predicate, "@TOK@", predictedAttrValues, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), availableContentActions);
 
                 if (attrTrainingVector != null) {
                     Prediction predictAttr = classifierAttrs.predict(attrTrainingVector);
@@ -4482,21 +4212,19 @@ public class Bagel extends DatasetParser {
      */
     public ArrayList<String> getPredictedAttrList(ArrayList<Action> wordSequence) {
         ArrayList<Action> cleanActionList = new ArrayList<>();
-        for (Action action : wordSequence) {
-            if (!action.getWord().equals(Action.TOKEN_START)
-                    && !action.getWord().equals(Action.TOKEN_END)) {
-                cleanActionList.add(action);
-            }
-        }
+        wordSequence.stream().filter((action) -> (!action.getWord().equals(Action.TOKEN_START)
+                && !action.getWord().equals(Action.TOKEN_END))).forEachOrdered((action) -> {
+                    cleanActionList.add(action);
+        });
 
         ArrayList<String> predictedAttrList = new ArrayList<>();
-        for (Action action : cleanActionList) {
+        cleanActionList.forEach((action) -> {
             if (predictedAttrList.isEmpty()) {
                 predictedAttrList.add(action.getAttribute());
             } else if (!predictedAttrList.get(predictedAttrList.size() - 1).equals(action.getAttribute())) {
                 predictedAttrList.add(action.getAttribute());
             }
-        }
+        });
         return predictedAttrList;
     }
 
@@ -4536,10 +4264,10 @@ public class Bagel extends DatasetParser {
                 Object o1 = ois1.readObject();
                 if (predicates == null) {
                     if (o1 instanceof ArrayList) {
-                        predicates = new ArrayList<String>((ArrayList<String>) o1);
+                        predicates = new ArrayList<String>((Collection<? extends String>) o1);
                     }
                 } else if (o1 instanceof ArrayList) {
-                    predicates.addAll((ArrayList<String>) o1);
+                    predicates.addAll((Collection<? extends String>) o1);
                 }
                 ///////////////////
                 fin2 = new FileInputStream(file2);
@@ -4547,10 +4275,10 @@ public class Bagel extends DatasetParser {
                 Object o2 = ois2.readObject();
                 if (availableAttributeActions == null) {
                     if (o2 instanceof HashMap) {
-                        availableAttributeActions = new HashMap<String, HashSet<String>>((HashMap<String, HashSet<String>>) o2);
+                        availableAttributeActions = new HashMap<String, HashSet<String>>((Map<? extends String, ? extends HashSet<String>>) o2);
                     }
                 } else if (o2 instanceof HashMap) {
-                    availableAttributeActions.putAll((HashMap<String, HashSet<String>>) o2);
+                    availableAttributeActions.putAll((Map<? extends String, ? extends HashSet<String>>) o2);
                 }
                 ///////////////////
                 fin3 = new FileInputStream(file3);
@@ -4558,10 +4286,10 @@ public class Bagel extends DatasetParser {
                 Object o3 = ois3.readObject();
                 if (attributeValuePairs == null) {
                     if (o3 instanceof HashMap) {
-                        attributeValuePairs = new HashMap<String, HashSet<String>>((HashMap<String, HashSet<String>>) o3);
+                        attributeValuePairs = new HashMap<String, HashSet<String>>((Map<? extends String, ? extends HashSet<String>>) o3);
                     }
                 } else if (o3 instanceof HashMap) {
-                    attributeValuePairs.putAll((HashMap<String, HashSet<String>>) o3);
+                    attributeValuePairs.putAll((Map<? extends String, ? extends HashSet<String>>) o3);
                 }
                 ///////////////////
                 fin4 = new FileInputStream(file4);
@@ -4569,10 +4297,10 @@ public class Bagel extends DatasetParser {
                 Object o4 = ois4.readObject();
                 if (valueAlignments == null) {
                     if (o4 instanceof HashMap) {
-                        valueAlignments = new HashMap<String, HashMap<ArrayList<String>, Double>>((HashMap<String, HashMap<ArrayList<String>, Double>>) o4);
+                        valueAlignments = new HashMap<String, HashMap<ArrayList<String>, Double>>((Map<? extends String, ? extends HashMap<ArrayList<String>, Double>>) o4);
                     }
                 } else if (o4 instanceof HashMap) {
-                    valueAlignments.putAll((HashMap<String, HashMap<ArrayList<String>, Double>>) o4);
+                    valueAlignments.putAll((Map<? extends String, ? extends HashMap<ArrayList<String>, Double>>) o4);
                 }
                 ///////////////////
                 fin5 = new FileInputStream(file5);
@@ -4580,35 +4308,29 @@ public class Bagel extends DatasetParser {
                 Object o5 = ois5.readObject();
                 if (datasetInstances == null) {
                     if (o5 instanceof HashMap) {
-                        datasetInstances = new HashMap<String, ArrayList<DatasetInstance>>((HashMap<String, ArrayList<DatasetInstance>>) o5);
+                        datasetInstances = new HashMap<String, ArrayList<DatasetInstance>>((Map<? extends String, ? extends ArrayList<DatasetInstance>>) o5);
                     } else {
                         return false;
                     }
                 } else if (o5 instanceof HashMap) {
-                    datasetInstances.putAll((HashMap<String, ArrayList<DatasetInstance>>) o5);
+                    datasetInstances.putAll((Map<? extends String, ? extends ArrayList<DatasetInstance>>) o5);
                 }
                 ///////////////////
                 fin6 = new FileInputStream(file6);
                 ois6 = new ObjectInputStream(fin6);
                 Object o6 = ois6.readObject();
-                ArrayList<Integer> lengths = new ArrayList<Integer>((ArrayList<Integer>) o6);
+                ArrayList<Integer> lengths = new ArrayList<Integer>((Collection<? extends Integer>) o6);
                 maxAttrRealizationSize = lengths.get(0);
                 maxWordRealizationSize = lengths.get(1);
-                System.out.println("done!");
-            } catch (ClassNotFoundException ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (ClassNotFoundException | IOException ex) {
             } finally {
                 try {
                     fin1.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
                 try {
                     ois1.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
             }
             return true;
@@ -4667,9 +4389,7 @@ public class Bagel extends DatasetParser {
             lengths.add(maxAttrRealizationSize);
             lengths.add(maxWordRealizationSize);
             oos6.writeObject(lengths);
-            System.out.println("done!");
         } catch (IOException ex) {
-            ex.printStackTrace();
         } finally {
             try {
                 fout1.close();
@@ -4679,7 +4399,6 @@ public class Bagel extends DatasetParser {
                 fout5.close();
                 fout6.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
             try {
                 oos1.close();
@@ -4689,7 +4408,6 @@ public class Bagel extends DatasetParser {
                 oos5.close();
                 oos6.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
         }
     }
@@ -4724,10 +4442,10 @@ public class Bagel extends DatasetParser {
                 Object o2 = ois2.readObject();
                 if (wordLMsPerPredicate == null) {
                     if (o2 instanceof HashMap) {
-                        wordLMsPerPredicate = new HashMap<String, SimpleLM>((HashMap<String, SimpleLM>) o2);
+                        wordLMsPerPredicate = new HashMap<String, SimpleLM>((Map<? extends String, ? extends SimpleLM>) o2);
                     }
                 } else if (o2 instanceof HashMap) {
-                    wordLMsPerPredicate.putAll((HashMap<String, SimpleLM>) o2);
+                    wordLMsPerPredicate.putAll((Map<? extends String, ? extends SimpleLM>) o2);
                 }
 
                 fin3 = new FileInputStream(file3);
@@ -4736,30 +4454,24 @@ public class Bagel extends DatasetParser {
 
                 if (attrLMsPerPredicate == null) {
                     if (o3 instanceof HashMap) {
-                        attrLMsPerPredicate = new HashMap<String, SimpleLM>((HashMap<String, SimpleLM>) o3);
+                        attrLMsPerPredicate = new HashMap<String, SimpleLM>((Map<? extends String, ? extends SimpleLM>) o3);
                     }
                 } else if (o3 instanceof HashMap) {
-                    attrLMsPerPredicate.putAll((HashMap<String, SimpleLM>) o3);
+                    attrLMsPerPredicate.putAll((Map<? extends String, ? extends SimpleLM>) o3);
                 }
-                System.out.println("done!");
-            } catch (ClassNotFoundException ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (ClassNotFoundException | IOException ex) {
             } finally {
                 try {
                     fin1.close();
                     fin2.close();
                     fin3.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
                 try {
                     ois1.close();
                     ois2.close();
                     ois3.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
             }
         } else {
@@ -4794,23 +4506,19 @@ public class Bagel extends DatasetParser {
             fout3 = new FileOutputStream(file3);
             oos3 = new ObjectOutputStream(fout3);
             oos3.writeObject(attrLMsPerPredicate);
-            System.out.println("done!");
         } catch (IOException ex) {
-            ex.printStackTrace();
         } finally {
             try {
                 fout1.close();
                 fout2.close();
                 fout3.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
             try {
                 oos1.close();
                 oos2.close();
                 oos3.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
         }
     }
@@ -4835,10 +4543,10 @@ public class Bagel extends DatasetParser {
                 Object o1 = ois1.readObject();
                 if (predicateAttrTrainingData == null) {
                     if (o1 instanceof HashMap) {
-                        predicateAttrTrainingData = new HashMap<String, ArrayList<Instance>>((HashMap<String, ArrayList<Instance>>) o1);
+                        predicateAttrTrainingData = new HashMap<String, ArrayList<Instance>>((Map<? extends String, ? extends ArrayList<Instance>>) o1);
                     }
                 } else if (o1 instanceof HashMap) {
-                    predicateAttrTrainingData.putAll((HashMap<String, ArrayList<Instance>>) o1);
+                    predicateAttrTrainingData.putAll((Map<? extends String, ? extends ArrayList<Instance>>) o1);
                 }
 
                 fin2 = new FileInputStream(file2);
@@ -4846,29 +4554,23 @@ public class Bagel extends DatasetParser {
                 Object o2 = ois2.readObject();
                 if (predicateWordTrainingData == null) {
                     if (o2 instanceof HashMap) {
-                        predicateWordTrainingData = new HashMap<String, HashMap<String, ArrayList<Instance>>>((HashMap<String, HashMap<String, ArrayList<Instance>>>) o2);
+                        predicateWordTrainingData = new HashMap<String, HashMap<String, ArrayList<Instance>>>((Map<? extends String, ? extends HashMap<String, ArrayList<Instance>>>) o2);
                     }
                 } else if (o2 instanceof HashMap) {
-                    predicateWordTrainingData.putAll((HashMap<String, HashMap<String, ArrayList<Instance>>>) o2);
+                    predicateWordTrainingData.putAll((Map<? extends String, ? extends HashMap<String, ArrayList<Instance>>>) o2);
                 }
 
-                System.out.println("done!");
-            } catch (ClassNotFoundException ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (ClassNotFoundException | IOException ex) {
             } finally {
                 try {
                     fin1.close();
                     fin2.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
                 try {
                     ois1.close();
                     ois2.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
             }
         } else {
@@ -4897,21 +4599,17 @@ public class Bagel extends DatasetParser {
             oos2 = new ObjectOutputStream(fout2);
             oos2.writeObject(predicateWordTrainingData);
 
-            System.out.println("done!");
         } catch (IOException ex) {
-            ex.printStackTrace();
         } finally {
             try {
                 fout1.close();
                 fout2.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
             try {
                 oos1.close();
                 oos2.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
         }
     }
@@ -4923,6 +4621,7 @@ public class Bagel extends DatasetParser {
      * @param trainedWordClassifiers_0
      * @return
      */
+    @Override
     public boolean loadInitClassifiers(int dataSize, HashMap<String, JAROW> trainedAttrClassifiers_0, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0) {
         String file1 = "attrInitClassifiers_BAGEL_" + fold + "_" + dataSize;
         String file2 = "wordInitClassifiers_BAGEL_" + fold + "_" + dataSize;
@@ -4942,26 +4641,20 @@ public class Bagel extends DatasetParser {
                 ois2 = new ObjectInputStream(fin2);
                 Object o2 = ois2.readObject();
                 if (o2 instanceof HashMap) {
-                    trainedWordClassifiers_0.putAll((HashMap<String, HashMap<String, JAROW>>) o2);
+                    trainedWordClassifiers_0.putAll((Map<? extends String, ? extends HashMap<String, JAROW>>) o2);
                 }
 
-                System.out.println("done!");
-            } catch (ClassNotFoundException ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (ClassNotFoundException | IOException ex) {
             } finally {
                 try {
                     fin1.close();
                     fin2.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
                 try {
                     ois1.close();
                     ois2.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
             }
         } else {
@@ -4976,6 +4669,7 @@ public class Bagel extends DatasetParser {
      * @param trainedAttrClassifiers_0
      * @param trainedWordClassifiers_0
      */
+    @Override
     public void writeInitClassifiers(int dataSize, HashMap<String, JAROW> trainedAttrClassifiers_0, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0) {
         String file1 = "attrInitClassifiers_BAGEL_" + fold + "_" + dataSize;
         String file2 = "wordInitClassifiers_BAGEL_" + fold + "_" + dataSize;
@@ -4993,22 +4687,19 @@ public class Bagel extends DatasetParser {
             oos2 = new ObjectOutputStream(fout2);
             oos2.writeObject(trainedWordClassifiers_0);
 
-            System.out.println("done!");
         } catch (IOException ex) {
-            ex.printStackTrace();
         } finally {
             try {
                 fout1.close();
                 fout2.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
             try {
                 oos1.close();
                 oos2.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
         }
     }
+    private static final Logger LOG = Logger.getLogger(Bagel.class.getName());
 }

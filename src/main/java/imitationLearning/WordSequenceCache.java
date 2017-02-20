@@ -3,26 +3,22 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package jdagger;
+package imitationLearning;
 
 /**
  *
  * @author Gerasimos Lampouras
  */
 import java.util.ArrayList;
+import java.util.logging.Logger;
 import org.apache.commons.collections4.MapIterator;
 import org.apache.commons.collections4.map.LRUMap;
 
-/**
- *
- * @author Gerasimos Lampouras
- * @param <K>
- * @param <T>
- */
+
 public class WordSequenceCache<K, T> {
  
-    private long timeToLive;
-    private LRUMap cacheMap;
+    private final long timeToLive;
+    private final LRUMap cacheMap;
  
     /**
      *
@@ -55,21 +51,19 @@ public class WordSequenceCache<K, T> {
      * @param maxItems
      */
     public WordSequenceCache(long timeToLive, final long timerInterval, int maxItems) {
-        this.timeToLive = timeToLive * 1000;
+        this.timeToLive = timeToLive * 1_000;
  
         cacheMap = new LRUMap(maxItems);
  
         if (timeToLive > 0 && timerInterval > 0) {
  
-            Thread t = new Thread(new Runnable() {
-                public void run() {
-                    while (true) {
-                        try {
-                            Thread.sleep(timerInterval * 1000);
-                        } catch (InterruptedException ex) {
-                        }
-                        cleanup();
+            Thread t = new Thread(() -> {
+                while (true) {
+                    try {
+                        Thread.sleep(timerInterval * 1_000);
+                    }catch (InterruptedException ex) {
                     }
+                    cleanup();
                 }
             });
  
@@ -94,7 +88,6 @@ public class WordSequenceCache<K, T> {
      */
     public void keyset() {
         synchronized (cacheMap) {
-            System.out.println(cacheMap.keySet());
         }
     }
  
@@ -108,9 +101,9 @@ public class WordSequenceCache<K, T> {
         synchronized (cacheMap) {
             CacheObject c = (CacheObject) cacheMap.get(key);
  
-            if (c == null)
+            if (c == null) {
                 return null;
-            else {
+            } else {
                 c.lastAccessed = System.currentTimeMillis();
                 return c.value;
             }
@@ -171,4 +164,5 @@ public class WordSequenceCache<K, T> {
             Thread.yield();
         }
     }
+    private static final Logger LOG = Logger.getLogger(WordSequenceCache.class.getName());
 }

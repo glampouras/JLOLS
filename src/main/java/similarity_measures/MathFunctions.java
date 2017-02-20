@@ -16,10 +16,7 @@
  */
 package similarity_measures;
 
-/**
- *
- * @author Gerasimos Lampouras
- */
+
 public class MathFunctions
 {
 
@@ -36,4 +33,7 @@ public class MathFunctions
 		min = (c < min) ? c : min;
 		return min;
 	}
+
+    private MathFunctions() {
+    }
 }

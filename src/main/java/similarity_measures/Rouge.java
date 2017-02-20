@@ -1,17 +1,8 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
+
 package similarity_measures;
 
 import java.util.HashSet;
-import java.util.StringTokenizer;
 
-/**
- *
- * @author Black Fox
- */
-//Contains an implimentation of the ROUGE-W similarity score
 public class Rouge {
 
     /**
@@ -55,6 +46,9 @@ public class Rouge {
                 }
             }
         }
-        return (double) commonNGrams.size() / (double) totalNGrams.size();
+        return commonNGrams.size() / (double) totalNGrams.size();
+    }
+
+    private Rouge() {
     }
 }

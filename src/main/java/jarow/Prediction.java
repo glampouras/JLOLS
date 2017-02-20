@@ -19,6 +19,7 @@ package jarow;
 import gnu.trove.map.hash.TObjectDoubleHashMap;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.logging.Logger;
 
 /**
  *
@@ -158,4 +159,5 @@ public class Prediction {
     public void setEntropy(Double entropy) {
         this.entropy = entropy;
     }
+    private static final Logger LOG = Logger.getLogger(Prediction.class.getName());
 }

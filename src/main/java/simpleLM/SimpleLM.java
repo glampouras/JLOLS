@@ -1,9 +1,10 @@
 package simpleLM;
 
-import imitationNLG.Action;
+import structuredPredictionNLG.Action;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.logging.Logger;
 
 /**
  *
@@ -12,10 +13,10 @@ import java.util.HashMap;
 public class SimpleLM implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private HashMap<String, Integer> unigramCounts;
+    private final HashMap<String, Integer> unigramCounts;
     private Integer unigramTotalCount;
-    private HashMap<Integer, HashMap<ArrayList<String>, HashMap<String, Integer>>> ngramCounts;
-    private HashMap<Integer, HashMap<ArrayList<String>, Integer>> ngramTotalCounts;
+    private final HashMap<Integer, HashMap<ArrayList<String>, HashMap<String, Integer>>> ngramCounts;
+    private final HashMap<Integer, HashMap<ArrayList<String>, Integer>> ngramTotalCounts;
     private int order = 3;
 
     /**
@@ -132,4 +133,5 @@ public class SimpleLM implements Serializable {
         }
         return prob;
     }
+    private static final Logger LOG = Logger.getLogger(SimpleLM.class.getName());
 }

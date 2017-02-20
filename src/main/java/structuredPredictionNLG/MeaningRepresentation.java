@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package imitationNLG;
+package structuredPredictionNLG;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -23,22 +23,35 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
 
+
 /**
- *
+ * Internal representation of a Meaning Representation
  * @author Gerasimos Lampouras
+ * @organization University of Sheffield
  */
 public class MeaningRepresentation implements Serializable {
-    private String predicate;
-    private HashMap<String, HashSet<String>> arguments;
-    private HashMap<String, String> delexMap = new HashMap<>();
+    private static final long serialVersionUID = 1L;
     
-    String MRstr = "";
+    //  A MeaningRepresentation consists of a predicate, and a map of attributes to sets of values
+    private final String predicate;
+    private final HashMap<String, HashSet<String>> arguments;
+    /*  
+     * This variable stores the string describing the meaning representation in the dataset.
+     * Used mostly for tracking "unique" instances of an MR in the dataset, when lexicalization and attribute order are considered.
+    */
+    private String MRstr = "";
+    
+    /*
+     * This variable maps the variable values (e.g. @x@attr), to the corresponding lexicalized string values.
+     * It is populated during the initial delexicalization of the MR, and used after generation for post-processing re-lexicalization of the variables.
+    */
+    private HashMap<String, String> delexMap = new HashMap<>();    
 
     /**
-     *
-     * @param predicate
-     * @param arguments
-     * @param MRstr
+     * Main constructor
+     * @param predicate The predicate of the meaning representation.
+     * @param arguments A map of the meaning representation's attributes to their values.
+     * @param MRstr A string describing the meaning representation in the dataset.
      */
     public MeaningRepresentation(String predicate, HashMap<String, HashSet<String>> arguments, String MRstr) {
         this.predicate = predicate;
@@ -47,26 +60,30 @@ public class MeaningRepresentation implements Serializable {
     }
 
     /**
-     *
-     * @return
+     * Returns the value of the predicate.
+     * @return The value of the predicate.
      */
     public String getPredicate() {
         return predicate;
     }
 
     /**
-     *
-     * @return
+     * Returns the map of attributes to values.
+     * @return The map of attributes to values.
      */
     public HashMap<String, HashSet<String>> getAttributes() {
         return arguments;
     }
 
-    String abstractMR = "";
+    /**
+     * A string representation of the MeaningRepresantation, used primarily to compare MeaningRepresantation objects.
+     * We store the value, so we do not have to reconstruct it.
+     */
+    private String abstractMR = "";
 
     /**
-     *
-     * @return
+     * Returns (and constructs when first called) a string representation of the MeaningRepresantation.
+     * @return A string representation of the MeaningRepresantation.
      */
     public String getAbstractMR() {
         if (abstractMR.isEmpty()) {
@@ -74,15 +91,16 @@ public class MeaningRepresentation implements Serializable {
             ArrayList<String> attrs = new ArrayList<>(arguments.keySet());
             Collections.sort(attrs);
             HashMap<String, Integer> xCounts = new HashMap<>();
-            for (String attr : attrs) {
+            attrs.forEach((attr) -> {
                 xCounts.put(attr, 0);
-            }
-            for (String attr : attrs) {
+            });
+            attrs.stream().map((attr) -> {
                 abstractMR += attr + "={";
-
+                return attr;
+            }).map((attr) -> {
                 ArrayList<String> values = new ArrayList<>(arguments.get(attr));
                 Collections.sort(values);
-                for (String value : values) {
+                values.forEach((value) -> {
                     if (attr.equals("name")
                             || attr.equals("type")
                             || attr.equals("pricerange")
@@ -100,24 +118,26 @@ public class MeaningRepresentation implements Serializable {
                     } else {
                         abstractMR += value + ",";
                     }
-                }            
+                });            
+                return attr;
+            }).forEachOrdered((_item) -> {
                 abstractMR += "}";
-            }
+            });
         }
         return abstractMR;
     }
 
     /**
-     *
-     * @return
+     * Returns the value of the string describing the meaning representation in the dataset.
+     * @return The value of the string describing the meaning representation in the dataset.
      */
     public String getMRstr() {
         return MRstr;
     }
 
     /**
-     *
-     * @return
+     * Returns a hash code value for this Action.
+     * @return A hash code value for this Action.
      */
     @Override
     public int hashCode() {
@@ -128,9 +148,9 @@ public class MeaningRepresentation implements Serializable {
     }
 
     /**
-     *
-     * @param obj
-     * @return
+     * Indicates whether some other MeaningRepresenation is "equal to" this one. 
+     * @param obj The reference object with which to compare.
+     * @return true if this action is the same as the obj argument; false otherwise.
      */
     @Override
     public boolean equals(Object obj) {
@@ -144,23 +164,20 @@ public class MeaningRepresentation implements Serializable {
         if (!Objects.equals(this.predicate, other.predicate)) {
             return false;
         }
-        if (!this.arguments.equals(other.arguments)) {
-            return false;
-        }
-        return true;
+        return this.arguments.equals(other.arguments);
     }
 
     /**
-     *
-     * @return
+     * Returns the map between the variable values and corresponding lexicalized string values.
+     * @return The maps between the variable values and corresponding lexicalized string values.
      */
     public HashMap<String, String> getDelexMap() {
         return delexMap;
     }
 
     /**
-     *
-     * @param delexMap
+     * Sets the map between the variable values and corresponding lexicalized string values.
+     * @param delexMap The map between variable values and corresponding lexicalized string values, to be set.
      */
     public void setDelexMap(HashMap<String, String> delexMap) {
         this.delexMap = delexMap;

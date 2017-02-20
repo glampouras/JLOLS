@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package imitationNLG;
+package structuredPredictionNLG;
 
 import edu.stanford.nlp.mt.metrics.BLEUMetric;
 import edu.stanford.nlp.mt.metrics.NISTMetric;
@@ -24,7 +24,7 @@ import edu.stanford.nlp.mt.util.IStrings;
 import edu.stanford.nlp.mt.util.ScoredFeaturizedTranslation;
 import edu.stanford.nlp.mt.util.Sequence;
 import gnu.trove.map.hash.TObjectDoubleHashMap;
-import static imitationNLG.DatasetParser.dataset;
+import imitationLearning.JLOLS;
 import jarow.Instance;
 import jarow.JAROW;
 import jarow.Prediction;
@@ -40,16 +40,16 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Random;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import jdagger.JLOLS;
 import org.json.JSONArray;
 import org.json.JSONException;
 import similarity_measures.Levenshtein;
@@ -57,143 +57,57 @@ import similarity_measures.Rouge;
 import simpleLM.SimpleLM;
 
 /**
- *
+ * Implementation of a DatasetParse for the SF datasets introduced by Wen et al. (2016)
  * @author Gerasimos Lampouras
+ * @organization University of Sheffield
  */
 public class SFX extends DatasetParser {
 
-    HashMap<String, HashSet<String>> attributes = new HashMap<>();
-    HashMap<String, HashSet<String>> attributeValuePairs = new HashMap<>();
-    HashMap<String, ArrayList<DatasetInstance>> datasetInstances = new HashMap<>();
-    HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments = new HashMap<>();
-    HashMap<String, HashMap<ArrayList<Action>, Action>> punctuationPatterns = new HashMap<>();
-    ArrayList<String> predicates = new ArrayList<>();
-
+    private static final Logger LOG = Logger.getLogger(SFX.class.getName());
+    
     /**
-     *
-     */
-    public HashMap<String, String> wenDaToGen = new HashMap<>();
-
-    /**
-     *
-     */
-    public ArrayList<Double> crossAvgArgDistances = new ArrayList<>();
-
-    /**
-     *
-     */
-    public ArrayList<Double> crossNIST = new ArrayList<>();
-
-    /**
-     *
-     */
-    public ArrayList<Double> crossBLEU = new ArrayList<>();
-
-    /**
-     *
-     */
-    public ArrayList<Double> crossBLEUSmooth = new ArrayList<>();
-    static final int seed = 13;
-    private HashMap<String, ArrayList<Instance>> predicateAttrTrainingData;
-    private HashMap<String, HashMap<String, ArrayList<Instance>>> predicateWordTrainingData;
-
-    SimpleLM wordLM;
-
-    HashMap<String, SimpleLM> wordLMsPerPredicate = new HashMap<>();
-    HashMap<String, SimpleLM> attrLMsPerPredicate = new HashMap<>();
-
-    final static int threadsCount = Runtime.getRuntime().availableProcessors();
-
-    HashMap<String, String> sillyCompositeWordsInData = new HashMap<>();
-
-    //public static String dataset = "hotel";
-    //public static String dataset = "restaurant";
-    /**
-     *
+     * Main method; initialized a new DatasetParser for the SF datasets, and performs imitation learning on the it.
      * @param args
      */
     public static void main(String[] args) {
-        randomGen = new Random(seed);
-        boolean useDAggerArg = false;
-        boolean useLolsWord = true;
-
-        JLOLS.earlyStopMaxFurtherSteps = Integer.parseInt(args[0]);
-        JLOLS.p = Double.parseDouble(args[1]);
-
-        if (args[2].isEmpty()) {
-            dataset = "hotel";
-            //dataset = "restaurant";
-        } else {
-            dataset = args[2];
-        }
-        if (!args[3].isEmpty()
-                && (args[3].equals("B")
-                || args[3].equals("R")
-                || args[3].equals("BC")
-                || args[3].equals("RC")
-                || args[3].equals("BRC")
-                || args[3].equals("BR"))) {
-            System.out.println("Using " + args[3] + " metric on " + dataset + "!");
-            ActionSequence.metric = args[3];
-        }
-
-        SFX sfx = new SFX();
-        sfx.runImitationLearning(useDAggerArg, useLolsWord);
+        SFX sfx = new SFX(args);
+        sfx.parseDataset();
+        sfx.createTrainingData();
+        sfx.performImitationLearning();
     }
-
-    boolean useValidation = false;
+    // Collections for parsing the results of Wen et al. (2016), specifically the dataset splits (into train/valid/test), as well as the evaluation references used by Wen et al. in his experiments.
+    // These are mainly used to ensure our results are comparable with Wen et al. (2016)
+    private HashMap<String, String> wenDaToGen = new HashMap<>();
+    private HashMap<String, ArrayList<Sequence<IString>>> wenEvaluationReferenceSequences = new HashMap<>();
+    private HashMap<String, ArrayList<String>> wenEvaluationReferences = new HashMap<>();
 
     /**
-     *
-     * @param useDAggerArg
-     * @param useDAggerWord
+     * Main constructor
+     * @param args Console arguments
      */
-    public void runImitationLearning(boolean useDAggerArg, boolean useDAggerWord) {
-        averaging = true;
-        shuffling = true;
-        rounds = 10;
-        initialTrainingParam = 100.0;
-        additionalTrainingParam = 100.0;
-        adapt = true;
-
-        useLMs = true;
-        useSubsetData = false;
-
-        detailedResults = false;
-        resetLists = true;
-
-        File dataFile = new File("sfx_data/sfx" + dataset + "/train+valid+test.json");
-
-        useValidation = false;
-        boolean useRandomAlignments = false;
-
+    public SFX(String[] args) {
+        super(args);
+    }        
+    
+    /**
+     * Method where the dataset is parsed and the predicate, attribute, attribute/value, and value alignment collections are populated.
+     * Here, the data is also split in training, validation, and testing subsets.
+     */
+    @Override
+    public void parseDataset() {        
+        File dataFile = new File("sfx_data/sfx" + getDataset() + "/train+valid+test.json");
         String wenFile = "results/wenResults/sfxhotel.log";
-        if (dataset.equals("restaurant")) {
+        if (getDataset().equals("restaurant")) {
             wenFile = "results/wenResults/sfxrest.log";
-            initialTrainingParam = 100.0;
-            additionalTrainingParam = 100.0;
         }
-
-        if (/*resetLists || */!loadLists()) {
+        
+        if (isResetStoredCaches() || !loadLists()) {
+            // Populate the predicate, attribute, attribute/value, and value alignment collections
             createLists(dataFile);
             writeLists();
         }
-
-        //WEN DATA SPLIT
-        ArrayList<String> mrs = new ArrayList<String>();
-        try (BufferedReader br = new BufferedReader(new FileReader(wenFile))) {
-            String s;
-            while ((s = br.readLine()) != null) {
-                if (!s.trim().isEmpty()) {
-                    mrs.add(s.trim());
-                }
-            }
-
-        } catch (FileNotFoundException ex) {
-            Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IOException ex) {
-            Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
-        }
+        
+        // Read Wen et al.'s (2016) result files to ascertain which DatasetInstances are used for testing
         ArrayList<String> testWenMRs = new ArrayList<>();
         wenDaToGen = new HashMap<>();
         try (BufferedReader br = new BufferedReader(new FileReader(wenFile))) {
@@ -205,7 +119,7 @@ public class SFX extends DatasetParser {
                 if (s.startsWith("DA")) {
                     inGen = false;
                     inRef = false;
-                    da = s.substring(s.indexOf(":") + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
+                    da = s.substring(s.indexOf(':') + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
                     testWenMRs.add(da);
                 } else if (s.startsWith("Gen")) {
                     inGen = true;
@@ -229,74 +143,70 @@ public class SFX extends DatasetParser {
             Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
         }
 
-        trainingData = new ArrayList<>();
-        validationData = new ArrayList<>();
-        testingData = new ArrayList<>();
-
+        // Create a test subset of the DatasetInstances while making sure that it used the exact same DatasetInstances that Wen et al. (2016) also used.
         ArrayList<DatasetInstance> restData = new ArrayList<>();
-        for (String predicate : predicates) {
-            for (DatasetInstance in : datasetInstances.get(predicate)) {
+        getPredicates().forEach((predicate) -> {
+            getDatasetInstances().get(predicate).forEach((in) -> {
                 if (testWenMRs.contains(in.getMeaningRepresentation().getMRstr())) {
-                    testingData.add(in);
+                    getTestingData().add(in);
                     testWenMRs.remove(in.getMeaningRepresentation().getMRstr());
                 } else {
                     restData.add(in);
                 }
-            }
-        }
-        Collections.shuffle(restData, randomGen);
+            });
+        });
+        // Split the rest of the DatasetInstances (minus the one's used for testing) into validation and training subsets.
+        Collections.shuffle(restData, getRandomGen());
         for (int i = 0; i < restData.size(); i++) {
-            if (i < testingData.size()) {
-                validationData.add(restData.get(i));
+            if (i < getTestingData().size()) {
+                getValidationData().add(restData.get(i));
             } else {
-                trainingData.add(restData.get(i));
+                getTrainingData().add(restData.get(i));
             }
         }
-        randomGen = new Random(seed);
-        parseWenFiles(detailedResults);
-        System.out.println("Training data size: " + trainingData.size());
-        System.out.println("Validation data size: " + validationData.size());
-        System.out.println("Testing data size: " + testingData.size());
+        resetRandomGen();
+        
+        // We need to make another "deep" parse of Wen et al.'s (2016) results to gather the evaluation references he used.
+        // Idially we would want to merge this parse pass with the one made previously; keeping it separate for now, since we only need the second one when we want to explicitly use Wen's references as well.
+        parseWenFiles(isCalculateResultsPerPredicate(), wenFile);
+        System.out.println("Training data size: " + getTrainingData().size());
+        System.out.println("Validation data size: " + getValidationData().size());
+        System.out.println("Test data size: " + getTestingData().size());
+    }
+    
+    /**
+     * During this method, we calculate the alignments (naive or random), the language models, the available content and word actions, and finally the feature vectors.
+     */
+    @Override
+    public void createTrainingData() {
+        setTrainingData(new ArrayList<>(getTrainingData().subList(0, 50)));
+        setTestingData(new ArrayList<>(getTrainingData()));
 
-        if (useSubsetData) {
-            Collections.sort(trainingData);
-        }
-        trainingData = new ArrayList<>(trainingData.subList(0, 50));
-        testingData = new ArrayList<>(trainingData);
-        for (DatasetInstance di : validationData) {
-            HashSet<String> refs = new HashSet<>();
-            refs.add(di.getTrainReference());
-            for (DatasetInstance di2 : validationData) {
-                if (di2.getMeaningRepresentation().getAbstractMR().equals(di.getMeaningRepresentation().getAbstractMR())) {
-                    refs.add(di2.getTrainReference());
-                }
-            }
-            di.setEvalReferences(refs);
-        }
-
-        if (!useRandomAlignments) {
-            createNaiveAlignments(trainingData);
+        // Calculate alignments between the word of the sentence and the atribute/values
+        if (getUseAlignments().equals("naive")) {
+            createNaiveAlignments(getTrainingData());
         } else {
-            createRandomAlignments(trainingData);
+            createRandomAlignments(getTrainingData());
         }
 
-        if (resetLists || !loadLMs()) {
-            ArrayList<ArrayList<String>> LMWordTraining = new ArrayList<>();
-
+        // Create (or load from cache) the content and word language models per predicate
+        if (isResetStoredCaches() || !loadLMs()) {
             HashMap<String, ArrayList<ArrayList<String>>> LMWordTrainingPerPred = new HashMap<>();
             HashMap<String, ArrayList<ArrayList<String>>> LMAttrTrainingPerPred = new HashMap<>();
-            for (DatasetInstance di : trainingData) {
+            getTrainingData().stream().map((di) -> {
                 if (!LMWordTrainingPerPred.containsKey(di.getMeaningRepresentation().getPredicate())) {
                     LMWordTrainingPerPred.put(di.getMeaningRepresentation().getPredicate(), new ArrayList<ArrayList<String>>());
                     LMAttrTrainingPerPred.put(di.getMeaningRepresentation().getPredicate(), new ArrayList<ArrayList<String>>());
                 }
+                return di;
+            }).forEachOrdered((di) -> {
                 HashSet<ArrayList<Action>> seqs = new HashSet<>();
-                seqs.add(di.getTrainRealization());
-                //seqs.addAll(di.getEvalRealizations());
-                for (ArrayList<Action> seq : seqs) {
+                seqs.add(di.getDirectReferenceSequence());
+                seqs.forEach((seq) -> {
                     ArrayList<String> wordSeq = new ArrayList<>();
                     ArrayList<String> attrSeq = new ArrayList<>();
 
+                    // We add some empty tokens at the start of each sequence
                     wordSeq.add("@@");
                     wordSeq.add("@@");
                     attrSeq.add("@@");
@@ -307,170 +217,132 @@ public class SFX extends DatasetParser {
                             wordSeq.add(seq.get(i).getWord());
                         }
                         if (attrSeq.isEmpty()) {
-                            //if (!seq.get(i).getAttribute().equals(Action.TOKEN_END)) {
                             attrSeq.add(seq.get(i).getAttribute());
-                            //}
                         } else if (!attrSeq.get(attrSeq.size() - 1).equals(seq.get(i).getAttribute())) {
-                            //if (!seq.get(i).getAttribute().equals(Action.TOKEN_END)) {
                             attrSeq.add(seq.get(i).getAttribute());
-                            //}
                         }
                     }
                     wordSeq.add(Action.TOKEN_END);
-                    LMWordTraining.add(wordSeq);
                     LMWordTrainingPerPred.get(di.getMeaningRepresentation().getPredicate()).add(wordSeq);
                     LMAttrTrainingPerPred.get(di.getMeaningRepresentation().getPredicate()).add(attrSeq);
-                }
-            }
+                });
+            });
 
-            wordLM = new SimpleLM(3);
-            wordLM.trainOnStrings(LMWordTraining);
-
-            wordLMsPerPredicate = new HashMap<>();
-            attrLMsPerPredicate = new HashMap<>();
-            for (String pred : LMWordTrainingPerPred.keySet()) {
+            setWordLMsPerPredicate(new HashMap<>());
+            setContentLMsPerPredicate(new HashMap<>());
+            LMWordTrainingPerPred.keySet().stream().map((pred) -> {
                 SimpleLM simpleWordLM = new SimpleLM(3);
                 simpleWordLM.trainOnStrings(LMWordTrainingPerPred.get(pred));
-                wordLMsPerPredicate.put(pred, simpleWordLM);
-
+                getWordLMsPerPredicate().put(pred, simpleWordLM);
+                return pred;
+            }).forEachOrdered((pred) -> {
                 SimpleLM simpleAttrLM = new SimpleLM(3);
                 simpleAttrLM.trainOnStrings(LMAttrTrainingPerPred.get(pred));
-                attrLMsPerPredicate.put(pred, simpleAttrLM);
-            }
+                getContentLMsPerPredicate().put(pred, simpleAttrLM);
+            });
             writeLMs();
         }
 
-        HashMap<String, HashSet<String>> availableAttributeActions = new HashMap<>();
+        // Go through the sequences in the data and populate the available content and word action dictionaries
+        // We populate a distinct word dictionary for each attribute, and populate it with the words of word sequences whose corresponding content sequences contain that attribute
+        HashMap<String, HashSet<String>> availableContentActions = new HashMap<>();
         HashMap<String, HashMap<String, HashSet<Action>>> availableWordActions = new HashMap<>();
-        for (DatasetInstance DI : trainingData) {
+        getTrainingData().forEach((DI) -> {
             String predicate = DI.getMeaningRepresentation().getPredicate();
-            if (!availableAttributeActions.containsKey(predicate)) {
-                availableAttributeActions.put(predicate, new HashSet<String>());
-                availableAttributeActions.get(predicate).add(Action.TOKEN_END);
+            if (!availableContentActions.containsKey(predicate)) {
+                availableContentActions.put(predicate, new HashSet<String>());
+                availableContentActions.get(predicate).add(Action.TOKEN_END);
             }
             if (!availableWordActions.containsKey(predicate)) {
                 availableWordActions.put(predicate, new HashMap<String, HashSet<Action>>());
             }
-
-            ArrayList<Action> realization = DI.getTrainRealization();
-            for (Action a : realization) {
-                if (!a.getAttribute().equals(Action.TOKEN_END)) {
-                    String attr = "";
-                    if (a.getAttribute().contains("=")) {
-                        attr = a.getAttribute().substring(0, a.getAttribute().indexOf('='));
-                    } else {
-                        attr = a.getAttribute();
-                    }
-                    availableAttributeActions.get(predicate).add(attr);
-                    if (!availableWordActions.get(predicate).containsKey(attr)) {
-                        availableWordActions.get(predicate).put(attr, new HashSet<Action>());
-                        availableWordActions.get(predicate).get(attr).add(new Action(Action.TOKEN_END, attr));
-                    }
-                    if (!a.getWord().equals(Action.TOKEN_START)
-                            && !a.getWord().equals(Action.TOKEN_END)
-                            && !a.getWord().matches("([,.?!;:'])")) {
-                        if (a.getWord().startsWith(Action.TOKEN_X)) {
-                            if (a.getWord().substring(3, a.getWord().lastIndexOf('_')).toLowerCase().trim().equals(attr)) {
-                                availableWordActions.get(predicate).get(attr).add(new Action(a.getWord(), attr));
-                            }
-                        } else {
+            ArrayList<Action> realization = DI.getDirectReferenceSequence();
+            realization.stream().filter((a) -> (!a.getAttribute().equals(Action.TOKEN_END))).forEachOrdered((Action a) -> {
+                String attr;
+                if (a.getAttribute().contains("=")) {
+                    attr = a.getAttribute().substring(0, a.getAttribute().indexOf('='));
+                } else {
+                    attr = a.getAttribute();
+                }
+                availableContentActions.get(predicate).add(attr);
+                if (!availableWordActions.get(predicate).containsKey(attr)) {
+                    availableWordActions.get(predicate).put(attr, new HashSet<Action>());
+                    availableWordActions.get(predicate).get(attr).add(new Action(Action.TOKEN_END, attr));
+                }
+                if (!a.getWord().equals(Action.TOKEN_START)
+                        && !a.getWord().equals(Action.TOKEN_END)
+                        && !a.getWord().matches("([,.?!;:'])")) {
+                    if (a.getWord().startsWith(Action.TOKEN_X)) {
+                        if (a.getWord().substring(3, a.getWord().lastIndexOf('_')).toLowerCase().trim().equals(attr)) {
                             availableWordActions.get(predicate).get(attr).add(new Action(a.getWord(), attr));
                         }
-                    }
-                    if (a.getWord().equals(",")
-                            || a.getWord().equals(".")
-                            || a.getWord().equals("?")) {
-                        System.out.println("RR " + realization);
-                        System.out.println("RR " + a);
-                        System.exit(0);
-                    }
-                    if (attr.equals("[]")) {
-                        System.out.println("RR " + realization);
-                        System.out.println("RR " + a);
-                        System.exit(0);
+                    } else {
+                        availableWordActions.get(predicate).get(attr).add(new Action(a.getWord(), attr));
                     }
                 }
-            }
+            });
+        });
+        setAvailableContentActions(availableContentActions);
+        setAvailableWordActions(availableWordActions);
+
+        //When using random alignments we do not consider the value alignments either
+        if (getUseAlignments().equals("random")) {
+            setValueAlignments(new HashMap<>());
         }
 
-        //ONLY WHEN RANDOM ALIGNMENTS
-        if (useRandomAlignments) {
-            valueAlignments = new HashMap<>();
-        }
-
-        if (resetLists || !loadTrainingData(trainingData.size())) {
+        // Infer the feature vectors of the training data
+        if (isResetStoredCaches() || !loadTrainingData(getTrainingData().size())) {
             System.out.print("Create training data...");
-            Object[] results = createTrainingDatasets(trainingData, availableAttributeActions, availableWordActions);
-            //Object[] results = createTrainingDatasetsOld(trainingData, availableAttributeActions, availableWordActions, nGrams);
+            Object[] results = inferFeatureAndCostVectors();
             System.out.print("almost...");
-            ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>> predicateAttrTrainingDataBefore = (ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>>) results[0];
-            ConcurrentHashMap<DatasetInstance, HashMap<String, HashMap<String, ArrayList<Instance>>>> predicateWordTrainingDataBefore = (ConcurrentHashMap<DatasetInstance, HashMap<String, HashMap<String, ArrayList<Instance>>>>) results[1];
+            
+            @SuppressWarnings("unchecked")
+            ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>> getPredicateContentTrainingDataBefore = (ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>>) results[0];
+            @SuppressWarnings("unchecked")
+            ConcurrentHashMap<DatasetInstance, HashMap<String, HashMap<String, ArrayList<Instance>>>> getPredicateWordTrainingDataBefore = (ConcurrentHashMap<DatasetInstance, HashMap<String, HashMap<String, ArrayList<Instance>>>>) results[1];
 
-            predicateAttrTrainingData = new HashMap<>();
-            for (DatasetInstance di : trainingData) {
-                for (String predicate : predicateAttrTrainingDataBefore.get(di).keySet()) {
-                    if (!predicateAttrTrainingData.containsKey(predicate)) {
-                        predicateAttrTrainingData.put(predicate, new ArrayList<Instance>());
+            // Reorganize the feature/cost vector collections 
+            // Initially they are mapped according to DatasetInstance (since it helps with parallel processing) but we prefer them mapped by predicate for training
+            setPredicateContentTrainingData(new HashMap<>());
+            getTrainingData().forEach((di) -> {
+                getPredicateContentTrainingDataBefore.get(di).keySet().stream().map((predicate) -> {
+                    if (!getPredicateContentTrainingData().containsKey(predicate)) {
+                        getPredicateContentTrainingData().put(predicate, new ArrayList<Instance>());
                     }
-                    predicateAttrTrainingData.get(predicate).addAll(predicateAttrTrainingDataBefore.get(di).get(predicate));
-                }
-            }
-            predicateWordTrainingData = new HashMap<>();
-            for (DatasetInstance di : trainingData) {
-                for (String predicate : predicateWordTrainingDataBefore.get(di).keySet()) {
-                    if (!predicateWordTrainingData.containsKey(predicate)) {
-                        predicateWordTrainingData.put(predicate, new HashMap<String, ArrayList<Instance>>());
+                    return predicate;
+                }).forEachOrdered((predicate) -> {
+                    getPredicateContentTrainingData().get(predicate).addAll(getPredicateContentTrainingDataBefore.get(di).get(predicate));
+                });
+            });
+            setPredicateWordTrainingData(new HashMap<>());
+            getTrainingData().forEach((di) -> {
+                getPredicateWordTrainingDataBefore.get(di).keySet().stream().map((predicate) -> {
+                    if (!getPredicateWordTrainingData().containsKey(predicate)) {
+                        getPredicateWordTrainingData().put(predicate, new HashMap<String, ArrayList<Instance>>());
                     }
-                    for (String attribute : predicateWordTrainingDataBefore.get(di).get(predicate).keySet()) {
-                        if (!predicateWordTrainingData.get(predicate).containsKey(attribute)) {
-                            predicateWordTrainingData.get(predicate).put(attribute, new ArrayList<Instance>());
+                    return predicate;
+                }).forEachOrdered((predicate) -> {
+                    getPredicateWordTrainingDataBefore.get(di).get(predicate).keySet().stream().map((attribute) -> {
+                        if (!getPredicateWordTrainingData().get(predicate).containsKey(attribute)) {
+                            getPredicateWordTrainingData().get(predicate).put(attribute, new ArrayList<Instance>());
                         }
-                        predicateWordTrainingData.get(predicate).get(attribute).addAll(predicateWordTrainingDataBefore.get(di).get(predicate).get(attribute));
-                    }
-                }
-            }
-            System.out.println("done!");
-            writeTrainingData(trainingData.size());
-        }
-
-        boolean setToGo = true;
-        if (predicateWordTrainingData.isEmpty() || predicateAttrTrainingData.isEmpty()) {
-            setToGo = false;
-        }
-        int c = 0;
-        for (String pred : predicateWordTrainingData.keySet()) {
-            for (String attr : predicateWordTrainingData.get(pred).keySet()) {
-                c += predicateWordTrainingData.get(pred).get(attr).size();
-            }
-        }
-        if (setToGo) {
-            JLOLS JDWords = new JLOLS(this);
-            //JDAggerForSFX_test JDWords = new JDAggerForSFX_test(this);
-            if (useValidation) {
-                JDWords.runLOLS(availableAttributeActions, trainingData, predicateAttrTrainingData, predicateWordTrainingData, availableWordActions, valueAlignments, wordRefRolloutChance, validationData, detailedResults);
-            } else {
-                JDWords.runLOLS(availableAttributeActions, trainingData, predicateAttrTrainingData, predicateWordTrainingData, availableWordActions, valueAlignments, wordRefRolloutChance, testingData, detailedResults);
-            }
+                        return attribute;
+                    }).forEachOrdered((attribute) -> {
+                        getPredicateWordTrainingData().get(predicate).get(attribute).addAll(getPredicateWordTrainingDataBefore.get(di).get(predicate).get(attribute));
+                    });
+                });
+            });
+            writeTrainingData(getTrainingData().size());
         }
     }
-
-    HashMap<String, ArrayList<Sequence<IString>>> staticReferences = new HashMap<>();
-    HashMap<String, ArrayList<String>> staticReferencesStrings = new HashMap<>();
 
     /**
      *
      * @param printResults
      */
-    public void parseWenFiles(boolean printResults) {
-        String rFile = "";
-        if (dataset.equals("hotel")) {
-            rFile = "results/wenResults/sfxhotel.log";
-        } else {
-            rFile = "results/wenResults/sfxrest.log";
-        }
-
-        staticReferences = new HashMap<>();
-        staticReferencesStrings = new HashMap<>();
+    public void parseWenFiles(boolean printResults, String rFile) {
+        wenEvaluationReferenceSequences = new HashMap<>();
+        wenEvaluationReferences = new HashMap<>();
         HashMap<String, String> daToGen = new HashMap<>();
         HashMap<String, String> predictedWordSequences_overAllPredicates = new HashMap<>();
         HashMap<String, HashMap<String, String>> predictedWordSequences_perPredicates = new HashMap<>();
@@ -502,10 +374,10 @@ public class SFX extends DatasetParser {
                     inGen = false;
                     inRef = false;
                     firstRef = true;
-                    da = s.substring(s.indexOf(":") + 1).trim();
+                    da = s.substring(s.indexOf(':') + 1).trim();
                     c++;
-                    MRstr = s.substring(s.indexOf(":") + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
-                    predicate = MRstr.substring(0, MRstr.indexOf("("));
+                    MRstr = s.substring(s.indexOf(':') + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
+                    predicate = MRstr.substring(0, MRstr.indexOf('('));
                     abstractMR = predicate + ":";
                     String attributesStr = MRstr.substring(MRstr.indexOf('(') + 1, MRstr.length() - 1);
                     attributeValues = new HashMap<>();
@@ -514,11 +386,10 @@ public class SFX extends DatasetParser {
 
                         String[] args = attributesStr.split(";");
                         if (attributesStr.contains("|")) {
-                            System.out.println(attributesStr);
                             System.exit(0);
                         }
                         for (String arg : args) {
-                            String attr = "";
+                            String attr;
                             String value = "";
                             if (arg.contains("=")) {
                                 String[] subAttr = arg.split("=");
@@ -574,7 +445,6 @@ public class SFX extends DatasetParser {
                                 value = "x" + index;
                             }
                             if (value.isEmpty()) {
-                                System.out.println("EMPTY VALUE");
                                 System.exit(0);
                             }
 
@@ -607,8 +477,8 @@ public class SFX extends DatasetParser {
                             finalReferences.add(references);
                             finalReferencesWordSequences.put(MRstr, referencesStrings);
                         }
-                        staticReferences.put(MRstr, references);
-                        staticReferencesStrings.put(MRstr, referencesStrings);
+                        wenEvaluationReferenceSequences.put(MRstr, references);
+                        wenEvaluationReferences.put(MRstr, referencesStrings);
                         references = new ArrayList<>();
                         referencesStrings = new ArrayList<>();
                         inRef = false;
@@ -622,9 +492,9 @@ public class SFX extends DatasetParser {
                             ArrayList<String> attrs = new ArrayList<>(attributeValues.keySet());
                             Collections.sort(attrs);
                             HashMap<String, Integer> xCounts = new HashMap<>();
-                            for (String attr : attrs) {
+                            attrs.forEach((attr) -> {
                                 xCounts.put(attr, 0);
-                            }
+                            });
                             for (String attr : attrs) {
                                 abstractMR += attr + "={";
 
@@ -722,7 +592,7 @@ public class SFX extends DatasetParser {
                                     total++;
                                 }
                             }
-                            double err = 1.0 - ((double) mentioned / (double) total);
+                            double err = 1.0 - (mentioned / (double) total);
                             if (Double.isNaN(err)) {
                                 err = 0.0;
                             }
@@ -734,10 +604,8 @@ public class SFX extends DatasetParser {
             }
             if (printResults) {
                 double avgErr = 0.0;
-                for (double err : attrCoverage.values()) {
-                    avgErr += err;
-                }
-                avgErr = avgErr / (double) attrCoverage.size();
+                avgErr = attrCoverage.values().stream().map((err) -> err).reduce(avgErr, (accumulator, _item) -> accumulator + _item);
+                avgErr /= attrCoverage.size();
                 System.out.println(finalReferences.size() + "\t" + generations.size() + "\t" + attrCoverage.size());
                 BLEUMetric BLEU = new BLEUMetric(finalReferences, 4, false);
                 NISTMetric NIST = new NISTMetric(finalReferences);
@@ -746,7 +614,7 @@ public class SFX extends DatasetParser {
                 double avgRougeScore = 0.0;
                 String detailedRes = "";
 
-                for (DatasetInstance di : testingData) {
+                avgRougeScore = getTestingData().stream().map((di) -> {
                     double maxRouge = 0.0;
                     String pWS = predictedWordSequences_overAllPredicates.get(di.getMeaningRepresentation().getMRstr()).replaceAll("\\?", " \\? ").replaceAll(":", " : ").replaceAll("\\.", " \\. ").replaceAll(",", " , ").replaceAll("  ", " ").trim();
                     for (String ref : finalReferencesWordSequences.get(di.getMeaningRepresentation().getMRstr())) {
@@ -755,12 +623,12 @@ public class SFX extends DatasetParser {
                             maxRouge = rouge;
                         }
                     }
-                    avgRougeScore += maxRouge;
-                }
-                System.out.println("WEN ROUGE: \t" + (avgRougeScore / (double) testingData.size()));
+                    return maxRouge;
+                }).map((maxRouge) -> maxRouge).reduce(avgRougeScore, (accumulator, _item) -> accumulator + _item);
+                System.out.println("WEN ROUGE: \t" + (avgRougeScore / getTestingData().size()));
                 System.out.println("WEN NIST: \t" + NIST.score(generations));
                 System.out.println("WEN ERR: \t" + avgErr);
-                System.out.println("WEN TOTAL: \t" + testingData.size());
+                System.out.println("WEN TOTAL: \t" + getTestingData().size());
                 System.out.println("///////////////////");
 
                 double uniqueMRsInTestAndNotInTrainAllPredWordBLEU = 0.0;
@@ -771,17 +639,17 @@ public class SFX extends DatasetParser {
                 detailedRes = "";
                 ArrayList<DatasetInstance> abstractMRList = new ArrayList<>();
                 HashSet<String> reportedAbstractMRs = new HashSet<>();
-                for (DatasetInstance di : testingData) {
+                for (DatasetInstance di : getTestingData()) {
                     if (!reportedAbstractMRs.contains(di.getMeaningRepresentation().getAbstractMR())) {
                         reportedAbstractMRs.add(di.getMeaningRepresentation().getAbstractMR());
                         boolean isInTraining = false;
-                        for (DatasetInstance di2 : trainingData) {
+                        for (DatasetInstance di2 : getTrainingData()) {
                             if (di2.getMeaningRepresentation().getAbstractMR().equals(di.getMeaningRepresentation().getAbstractMR())) {
                                 isInTraining = true;
                             }
                         }
                         if (!isInTraining) {
-                            for (DatasetInstance di2 : validationData) {
+                            for (DatasetInstance di2 : getValidationData()) {
                                 if (di2.getMeaningRepresentation().getAbstractMR().equals(di.getMeaningRepresentation().getAbstractMR())) {
                                     isInTraining = true;
                                 }
@@ -833,10 +701,12 @@ public class SFX extends DatasetParser {
                 System.out.println("WEN UNIQUE (NOT IN TRAIN) WORD ALL PRED COVERAGE ERROR: \t" + (1.0 - uniqueMRsInTestAndNotInTrainAllPredWordCOVERAGEERR));
                 System.out.println("WEN UNIQUE (NOT IN TRAIN) WORD ALL PRED BRC: \t" + uniqueMRsInTestAndNotInTrainAllPredWordBRC);
 
-                for (DatasetInstance di : abstractMRList) {
+                abstractMRList.forEach((di) -> {
                     System.out.println(di.getMeaningRepresentation().getAbstractMR() + "\t" + di.getMeaningRepresentation().getMRstr());
-                }
+                });
                 System.out.println("TOTAL SET SIZE: \t" + abstractMRList.size());
+                //System.out.println(abstractMRList);
+                //System.out.println(detailedRes);
                 //System.out.println(abstractMRList);  
                 //System.out.println(detailedRes);
                 System.out.println("///////////////////");
@@ -849,7 +719,7 @@ public class SFX extends DatasetParser {
                 double uniqueAllPredWordBRC = 0.0;
 
                 reportedAbstractMRs = new HashSet<>();
-                for (DatasetInstance di : testingData) {
+                for (DatasetInstance di : getTestingData()) {
                     //for (String predictedString : predictedWordSequences_overAllPredicates.get(di)) {
                     if (!reportedAbstractMRs.contains(di.getMeaningRepresentation().getAbstractMR())) {
                         String bestPredictedString = "";
@@ -899,10 +769,9 @@ public class SFX extends DatasetParser {
                 System.out.println("WEN UNIQUE WORD ALL PRED BRC: \t" + uniqueAllPredWordBRC);
                 System.out.println(detailedRes);
                 System.out.println("WEN TOTAL: \t" + reportedAbstractMRs.size());
-                System.out.println("///////////////////");
 
                 ////////////////////////
-                for (String pred : predicates) {
+                for (String pred : getPredicates()) {
                     detailedRes = "";
                     bestPredictedStrings = new ArrayList<>();
                     bestPredictedStringsMRs = new ArrayList<>();
@@ -912,7 +781,7 @@ public class SFX extends DatasetParser {
                     double uniquePredWordBRC = 0.0;
 
                     reportedAbstractMRs = new HashSet<>();
-                    for (DatasetInstance di : testingData) {
+                    for (DatasetInstance di : getTestingData()) {
                         if (di.getMeaningRepresentation().getPredicate().equals(pred)
                                 && !reportedAbstractMRs.contains(di.getMeaningRepresentation().getAbstractMR())) {
                             String bestPredictedString = "";
@@ -963,7 +832,6 @@ public class SFX extends DatasetParser {
                     System.out.println("WEN UNIQUE WORD " + pred + " BRC: \t" + uniquePredWordBRC);
                     System.out.println(detailedRes);
                     System.out.println("WEN TOTAL " + pred + ": \t" + reportedAbstractMRs.size());
-                    System.out.println("///////////////////");
                 }
             }
         } catch (FileNotFoundException ex) {
@@ -973,22 +841,16 @@ public class SFX extends DatasetParser {
         }
     }
 
-    double previousBLEU = 0.0;
-    ArrayList<ArrayList<Action>> previousResults = null;
-
     /**
      *
      * @param classifierAttrs
      * @param classifierWords
      * @param testingData
-     * @param availableAttributeActions
-     * @param availableWordActions
-     * @param printResults
      * @param epoch
-     * @param detailedResults
      * @return
      */
-    public Double evaluateGeneration(HashMap<String, JAROW> classifierAttrs, HashMap<String, HashMap<String, JAROW>> classifierWords, ArrayList<DatasetInstance> testingData, HashMap<String, HashSet<String>> availableAttributeActions, HashMap<String, HashMap<String, HashSet<Action>>> availableWordActions, boolean printResults, int epoch, boolean detailedResults) {
+    @Override
+    public Double evaluateGeneration(HashMap<String, JAROW> classifierAttrs, HashMap<String, HashMap<String, JAROW>> classifierWords, ArrayList<DatasetInstance> testingData, int epoch) {
         System.out.println("Evaluate argument generation ");
 
         int totalArgDistance = 0;
@@ -1023,12 +885,12 @@ public class SFX extends DatasetParser {
             if (attrValuesToBeMentioned.isEmpty()) {
                 attrValuesToBeMentioned.add("empty=empty");
             }
-            while (!predictedAttr.equals(Action.TOKEN_END) && predictedAttrValues.size() < maxAttrRealizationSize) {
+            while (!predictedAttr.equals(Action.TOKEN_END) && predictedAttrValues.size() < getMaxContentSequenceLength()) {
                 if (!predictedAttr.isEmpty()) {
                     attrValuesToBeMentioned.remove(predictedAttr);
                 }
                 if (!attrValuesToBeMentioned.isEmpty()) {
-                    Instance attrTrainingVector = createAttrInstance(predicate, "@TOK@", predictedAttrValues, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), availableAttributeActions);
+                    Instance attrTrainingVector = createContentInstance(predicate, "@TOK@", predictedAttrValues, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), getAvailableContentActions());
 
                     if (attrTrainingVector != null) {
                         Prediction predictAttr = classifierAttrs.get(predicate).predict(attrTrainingVector);
@@ -1038,7 +900,6 @@ public class SFX extends DatasetParser {
                             if (!classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributes().keySet())) {
                                 System.out.println("MR ATTR NOT IN CLASSIFIERS");
                                 System.out.println(classifierAttrs.get(predicate).getCurrentWeightVectors().keySet());
-                                System.out.println(di.getMeaningRepresentation().getAbstractMR());
                             }
                             String predictedValue = "";
                             if (!predictedAttr.equals(Action.TOKEN_END)) {
@@ -1124,7 +985,7 @@ public class SFX extends DatasetParser {
                                 isValueMentioned = true;
                             }
                             ArrayList<String> subPhrase = new ArrayList<>();
-                            while (!predictedWord.equals(Action.TOKEN_END) && predictedWordList.size() < maxWordRealizationSize) {
+                            while (!predictedWord.equals(Action.TOKEN_END) && predictedWordList.size() < getMaxWordSequenceLength()) {
                                 ArrayList<String> predictedAttributesForInstance = new ArrayList<>();
                                 for (int i = 0; i < predictedAttributes.size() - 1; i++) {
                                     predictedAttributesForInstance.add(predictedAttributes.get(i));
@@ -1132,7 +993,7 @@ public class SFX extends DatasetParser {
                                 if (!predictedAttributes.get(predictedAttributes.size() - 1).equals(attrValue)) {
                                     predictedAttributesForInstance.add(predictedAttributes.get(predictedAttributes.size() - 1));
                                 }
-                                Instance wordTrainingVector = createWordInstance(predicate, new Action("@TOK@", attrValue), predictedAttributesForInstance, predictedActionList, nextAttributesForInstance, attrValuesAlreadyMentioned, attrValuesToBeMentioned, isValueMentioned, availableWordActions.get(predicate));
+                                Instance wordTrainingVector = createWordInstance(predicate, new Action("@TOK@", attrValue), predictedAttributesForInstance, predictedActionList, nextAttributesForInstance, attrValuesAlreadyMentioned, attrValuesToBeMentioned, isValueMentioned, getAvailableWordActions().get(predicate));
 
                                 if (wordTrainingVector != null
                                         && classifierWords.get(predicate) != null) {
@@ -1192,8 +1053,8 @@ public class SFX extends DatasetParser {
                                                 }
                                             }
                                             if (!valueToCheck.equals("empty:empty")
-                                                    && valueAlignments.containsKey(valueToCheck)) {
-                                                for (ArrayList<String> alignedStr : valueAlignments.get(valueToCheck).keySet()) {
+                                                    && getValueAlignments().containsKey(valueToCheck)) {
+                                                for (ArrayList<String> alignedStr : getValueAlignments().get(valueToCheck).keySet()) {
                                                     if (endsWith(subPhrase, alignedStr)) {
                                                         isValueMentioned = true;
                                                         break;
@@ -1225,8 +1086,8 @@ public class SFX extends DatasetParser {
                                                     valueToCheck = attrValueTBM.replace("=", ":");
                                                 }
                                                 if (!valueToCheck.equals("empty:empty")
-                                                        && valueAlignments.containsKey(valueToCheck)) {
-                                                    for (ArrayList<String> alignedStr : valueAlignments.get(valueToCheck).keySet()) {
+                                                        && getValueAlignments().containsKey(valueToCheck)) {
+                                                    for (ArrayList<String> alignedStr : getValueAlignments().get(valueToCheck).keySet()) {
                                                         if (endsWith(subPhrase, alignedStr)) {
                                                             mentionedAttrValue = attrValueTBM;
                                                             break;
@@ -1242,7 +1103,7 @@ public class SFX extends DatasetParser {
                                     attrValuesToBeMentioned.remove(mentionedAttrValue);
                                 }
                             }
-                            if (predictedWordList.size() >= maxWordRealizationSize
+                            if (predictedWordList.size() >= getMaxWordSequenceLength()
                                     && !predictedActionList.get(predictedActionList.size() - 1).getWord().equals(Action.TOKEN_END)) {
                                 predictedWord = Action.TOKEN_END;
                                 predictedActionList.add(new Action(predictedWord, attrValue));
@@ -1255,21 +1116,17 @@ public class SFX extends DatasetParser {
                 }
             }
             ArrayList<String> predictedAttrs = new ArrayList<>();
-            for (String attributeValuePair : predictedAttrValues) {
+            predictedAttrValues.forEach((attributeValuePair) -> {
                 predictedAttrs.add(attributeValuePair.split("=")[0]);
-            }
+            });
 
             String predictedWordSequence = postProcessWordSequence(di, predictedActionList);
 
             ArrayList<String> predictedAttrList = getPredictedAttrList(predictedActionList);
             if (attrValuesToBeMentionedCopy.size() != 0.0) {
                 double missingAttrs = 0.0;
-                for (String attr : attrValuesToBeMentionedCopy) {
-                    if (!predictedAttrList.contains(attr)) {
-                        missingAttrs += 1.0;
-                    }
-                }
-                double attrSize = (double) attrValuesToBeMentionedCopy.size();
+                missingAttrs = attrValuesToBeMentionedCopy.stream().filter((attr) -> (!predictedAttrList.contains(attr))).map((_item) -> 1.0).reduce(missingAttrs, (accumulator, _item) -> accumulator + _item);
+                double attrSize = attrValuesToBeMentionedCopy.size();
                 attrCoverage.put(predictedWordSequence, missingAttrs / attrSize);
             }
 
@@ -1290,18 +1147,18 @@ public class SFX extends DatasetParser {
             ArrayList<Sequence<IString>> references = new ArrayList<>();
             ArrayList<String> referencesStrings = new ArrayList<>();
 
-            if (useValidation) {
-                for (String ref : di.getEvalReferences()) {
+            if (getPerformEvaluationOn().equals("valid") || getPerformEvaluationOn().equals("train")) {
+                for (String ref : di.getEvaluationReferences()) {
                     referencesStrings.add(ref);
                     references.add(IStrings.tokenize(NISTTokenizer.tokenize(ref)));
                 }
             } else {
-                references = staticReferences.get(di.getMeaningRepresentation().getMRstr());
-                referencesStrings = staticReferencesStrings.get(di.getMeaningRepresentation().getMRstr());
+                references = wenEvaluationReferenceSequences.get(di.getMeaningRepresentation().getMRstr());
+                referencesStrings = wenEvaluationReferences.get(di.getMeaningRepresentation().getMRstr());
                 if (references == null) {
                     references = new ArrayList<>();
                     referencesStrings = new ArrayList<>();
-                    for (String ref : di.getEvalReferences()) {
+                    for (String ref : di.getEvaluationReferences()) {
                         referencesStrings.add(ref);
                         references.add(IStrings.tokenize(NISTTokenizer.tokenize(ref)));
                     }
@@ -1310,62 +1167,7 @@ public class SFX extends DatasetParser {
             allPredictedReferences.add(referencesStrings);
             finalReferencesWordSequences.put(di, referencesStrings);
             finalReferences.add(references);
-
-            //EVALUATE ATTRIBUTE SEQUENCE
-            HashSet<ArrayList<String>> goldAttributeSequences = new HashSet<>();
-            for (DatasetInstance di2 : testingData) {
-                if (di2.getMeaningRepresentation().getAbstractMR().equals(di.getMeaningRepresentation().getAbstractMR())) {
-                    goldAttributeSequences.addAll(di2.getEvalMentionedAttributeSequences().values());
-                }
-            }
-
-            int minTotArgDistance = Integer.MAX_VALUE;
-            for (ArrayList<String> goldArgs : goldAttributeSequences) {
-                int totArgDistance = 0;
-                HashSet<Integer> matchedPositions = new HashSet<>();
-                for (int i = 0; i < predictedAttrs.size(); i++) {
-                    if (!predictedAttrs.get(i).equals(Action.TOKEN_START)
-                            && !predictedAttrs.get(i).equals(Action.TOKEN_END)) {
-                        int minArgDistance = Integer.MAX_VALUE;
-                        int minArgPos = -1;
-                        for (int j = 0; j < goldArgs.size(); j++) {
-                            if (!matchedPositions.contains(j)
-                                    && goldArgs.get(j).equals(predictedAttrs.get(i))) {
-                                int argDistance = Math.abs(j - i);
-
-                                if (argDistance < minArgDistance) {
-                                    minArgDistance = argDistance;
-                                    minArgPos = j;
-                                }
-                            }
-                        }
-
-                        if (minArgPos == -1) {
-                            totArgDistance += 100;
-                        } else {
-                            matchedPositions.add(minArgPos);
-                            totArgDistance += minArgDistance;
-                        }
-                    }
-                }
-                ArrayList<String> predictedCopy = (ArrayList<String>) predictedAttrs.clone();
-                for (String goldArg : goldArgs) {
-                    if (!goldArg.equals(Action.TOKEN_END)) {
-                        boolean contained = predictedCopy.remove(goldArg);
-                        if (!contained) {
-                            totArgDistance += 1000;
-                        }
-                    }
-                }
-                if (totArgDistance < minTotArgDistance) {
-                    minTotArgDistance = totArgDistance;
-                }
-            }
-            totalArgDistance += minTotArgDistance;
         }
-        previousResults = new ArrayList<>(generationActions.values());
-
-        crossAvgArgDistances.add(totalArgDistance / (double) testingData.size());
 
         NISTMetric NIST = new NISTMetric(finalReferences);
         BLEUMetric BLEU = new BLEUMetric(finalReferences, 4, false);
@@ -1375,13 +1177,8 @@ public class SFX extends DatasetParser {
         Double bleuSmoothScore = BLEUsmooth.score(generations);
 
         double finalCoverageError = 0.0;
-        for (double c : attrCoverage.values()) {
-            finalCoverageError += c;
-        }
-        finalCoverageError /= (double) attrCoverage.size();
-        crossNIST.add(nistScore);
-        crossBLEU.add(bleuScore);
-        crossBLEUSmooth.add(bleuSmoothScore);
+        finalCoverageError = attrCoverage.values().stream().map((c) -> c).reduce(finalCoverageError, (accumulator, _item) -> accumulator + _item);
+        finalCoverageError /= attrCoverage.size();
         for (int i = 0; i < allPredictedWordSequences.size(); i++) {
             String refs = "";
             if (allPredictedReferences.get(i) != null) {
@@ -1403,13 +1200,11 @@ public class SFX extends DatasetParser {
         double avgRougeScore = 0.0;
         String detailedRes = "";
 
-        for (DatasetInstance di : testingData) {
+        avgRougeScore = testingData.stream().map((di) -> {
             double maxRouge = 0.0;
             if (!finalReferencesWordSequences.containsKey(di)) {
                 System.out.println(di.getMeaningRepresentation().getAbstractMR());
-                System.out.println(finalReferencesWordSequences);
             }
-
             String predictedWordSequence = predictedWordSequences_overAllPredicates.get(di).replaceAll("\\?", " \\? ").replaceAll(":", " : ").replaceAll("\\.", " \\. ").replaceAll(",", " , ").replaceAll("  ", " ").trim();
             for (String ref : finalReferencesWordSequences.get(di)) {
                 double rouge = Rouge.ROUGE_N(predictedWordSequence, ref, 4);
@@ -1417,20 +1212,20 @@ public class SFX extends DatasetParser {
                     maxRouge = rouge;
                 }
             }
-            avgRougeScore += maxRouge;
-        }
-        //System.out.println("Avg arg distance: \t" + totalArgDistance / (double) testingData.size());
-        //System.out.println("NIST: \t" + nistScore);
+            return maxRouge;
+        }).map((maxRouge) -> maxRouge).reduce(avgRougeScore, (accumulator, _item) -> accumulator + _item);
         System.out.println("BLEU: \t" + bleuScore);
         //System.out.println("g: " + generations);
         //System.out.println("attr: " + predictedAttrLists);
         //System.out.println("BLEU smooth: \t" + bleuSmoothScore);
-        System.out.println("ROUGE: \t" + (avgRougeScore / (double) allPredictedWordSequences.size()));
+        //System.out.println("g: " + generations);
+        //System.out.println("attr: " + predictedAttrLists);
+        //System.out.println("BLEU smooth: \t" + bleuSmoothScore);
+        System.out.println("ROUGE: \t" + (avgRougeScore / allPredictedWordSequences.size()));
         System.out.println("COVERAGE ERROR: \t" + finalCoverageError);
-        System.out.println("BRC: \t" + ((avgRougeScore / (double) allPredictedWordSequences.size()) + bleuScore + (1.0 - finalCoverageError)) / 3.0);
-        System.out.println("///////////////////");
+        System.out.println("BRC: \t" + ((avgRougeScore / allPredictedWordSequences.size()) + bleuScore + (1.0 - finalCoverageError)) / 3.0);
 
-        if (detailedResults) {
+        if (isCalculateResultsPerPredicate()) {
             ////////////////////////
             //ArrayList<String> bestPredictedStrings = new ArrayList<>();
             //ArrayList<String> bestPredictedStringsMRs = new ArrayList<>();
@@ -1442,27 +1237,27 @@ public class SFX extends DatasetParser {
             detailedRes = "";
             ArrayList<DatasetInstance> abstractMRList = new ArrayList<>();
             HashSet<String> reportedAbstractMRs = new HashSet<>();
-            for (DatasetInstance di : testingData) {
-                if (!reportedAbstractMRs.contains(di.getMeaningRepresentation().getAbstractMR())) {
-                    reportedAbstractMRs.add(di.getMeaningRepresentation().getAbstractMR());
-                    boolean isInTraining = false;
-                    for (DatasetInstance di2 : trainingData) {
+            testingData.stream().filter((di) -> (!reportedAbstractMRs.contains(di.getMeaningRepresentation().getAbstractMR()))).map((di) -> {
+                reportedAbstractMRs.add(di.getMeaningRepresentation().getAbstractMR());
+                return di;
+            }).forEachOrdered((di) -> {
+                boolean isInTraining = false;
+                for (DatasetInstance di2 : getTrainingData()) {
+                    if (di2.getMeaningRepresentation().getAbstractMR().equals(di.getMeaningRepresentation().getAbstractMR())) {
+                        isInTraining = true;
+                    }
+                }
+                if (!isInTraining) {
+                    for (DatasetInstance di2 : getValidationData()) {
                         if (di2.getMeaningRepresentation().getAbstractMR().equals(di.getMeaningRepresentation().getAbstractMR())) {
                             isInTraining = true;
                         }
                     }
-                    if (!isInTraining) {
-                        for (DatasetInstance di2 : validationData) {
-                            if (di2.getMeaningRepresentation().getAbstractMR().equals(di.getMeaningRepresentation().getAbstractMR())) {
-                                isInTraining = true;
-                            }
-                        }
-                    }
-                    if (!isInTraining) {
-                        abstractMRList.add(di);
-                    }
                 }
-            }
+                if (!isInTraining) {
+                    abstractMRList.add(di);
+                }
+            });
             for (DatasetInstance di : abstractMRList) {
                 Double bestROUGE = -100.0;
                 Double bestBLEU = -100.0;
@@ -1504,13 +1299,12 @@ public class SFX extends DatasetParser {
             System.out.println("UNIQUE (NOT IN TRAIN) WORD ALL PRED COVERAGE ERROR: \t" + (1.0 - uniqueMRsInTestAndNotInTrainAllPredWordCOVERAGEERR));
             System.out.println("UNIQUE (NOT IN TRAIN) WORD ALL PRED BRC: \t" + uniqueMRsInTestAndNotInTrainAllPredWordBRC);
 
-            for (DatasetInstance di : abstractMRList) {
+            abstractMRList.forEach((di) -> {
                 System.out.println(di.getMeaningRepresentation().getAbstractMR() + "\t" + predictedWordSequences_overAllPredicates.get(di));
-            }
+            });
             System.out.println("TOTAL SET SIZE: \t" + abstractMRList.size());
             //System.out.println(abstractMRList);  
             //System.out.println(detailedRes);
-            System.out.println("///////////////////");
         }
         ArrayList<String> bestPredictedStrings = new ArrayList<>();
         ArrayList<String> bestPredictedStringsMRs = new ArrayList<>();
@@ -1559,7 +1353,7 @@ public class SFX extends DatasetParser {
             }
             //}
         }
-        if (detailedResults) {
+        if (isCalculateResultsPerPredicate()) {
             uniqueAllPredWordBLEU /= reportedAbstractMRs.size();
             uniqueAllPredWordROUGE /= reportedAbstractMRs.size();
             uniqueAllPredWordCOVERAGEERR /= reportedAbstractMRs.size();
@@ -1570,10 +1364,9 @@ public class SFX extends DatasetParser {
             System.out.println("UNIQUE WORD ALL PRED BRC: \t" + uniqueAllPredWordBRC);
             System.out.println(detailedRes);
             System.out.println("TOTAL: \t" + reportedAbstractMRs.size());
-            System.out.println("///////////////////");
 
             ////////////////////////
-            for (String predicate : predicates) {
+            for (String predicate : getPredicates()) {
                 detailedRes = "";
                 bestPredictedStrings = new ArrayList<>();
                 bestPredictedStringsMRs = new ArrayList<>();
@@ -1634,36 +1427,32 @@ public class SFX extends DatasetParser {
                 System.out.println("UNIQUE WORD " + predicate + " BRC: \t" + uniquePredWordBRC);
                 System.out.println(detailedRes);
                 System.out.println("TOTAL " + predicate + ": \t" + reportedAbstractMRs.size());
-                System.out.println("///////////////////");
             }
         }
 
-        if (printResults) {
+        if (isCalculateResultsPerPredicate()) {
             BufferedWriter bw = null;
             File f = null;
             try {
-                f = new File("random_SFX" + dataset + "TextsAfter" + (epoch) + "_" + JLOLS.earlyStopMaxFurtherSteps + "_" + JLOLS.p + "epochsTESTINGDATA.txt");
+                f = new File("random_SFX" + getDataset() + "TextsAfter" + (epoch) + "_" + JLOLS.sentenceCorrectionFurtherSteps + "_" + JLOLS.p + "epochsTESTINGDATA.txt");
             } catch (NullPointerException e) {
-                System.err.println("File not found." + e);
             }
 
             try {
                 bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
             } catch (FileNotFoundException e) {
-                System.err.println("Error opening file for writing! " + e);
             }
 
             try {
                 bw.write("BLEU:" + bleuScore);
                 bw.write("\n");
             } catch (IOException e) {
-                System.err.println("Write error!");
             }
             for (int i = 0; i < bestPredictedStrings.size(); i++) {
                 try {
-                    String mr = bestPredictedStringsMRs.get(i).toString();
+                    String mr = bestPredictedStringsMRs.get(i);
                     bw.write("MR;" + mr.replaceAll(";", ",") + ";");
-                    if (dataset.equals("hotel")) {
+                    if (getDataset().equals("hotel")) {
                         bw.write("LOLS_SFHOT;");
                     } else {
                         bw.write("LOLS_SFRES;");
@@ -1671,18 +1460,14 @@ public class SFX extends DatasetParser {
 
                     bw.write("\n");
                 } catch (IOException e) {
-                    System.err.println("Write error!");
                 }
             }
 
             try {
                 bw.close();
             } catch (IOException e) {
-                System.err.println("Error closing file.");
-            } catch (Exception e) {
             }
         }
-        previousBLEU = bleuScore;
         return bleuScore;
     }
 
@@ -1692,11 +1477,10 @@ public class SFX extends DatasetParser {
      */
     public void createLists(File dataFile) {
         try {
-            System.out.println("Create lists");
-            predicates = new ArrayList<>();
-            attributes = new HashMap<>();
-            attributeValuePairs = new HashMap<>();
-            valueAlignments = new HashMap<>();
+            setPredicates(new ArrayList<>());
+            setAttributes(new HashMap<>());
+            setAttributeValuePairs(new HashMap<>());
+            setValueAlignments(new HashMap<>());
 
             String str = new String();
             boolean begin = false;
@@ -1828,15 +1612,15 @@ public class SFX extends DatasetParser {
                             || MRstr.startsWith("?reqmore(")
                             || MRstr.startsWith("goodbye("))
                             && !ref.isEmpty()) {
-                        String predicate = MRstr.substring(0, MRstr.indexOf("("));
-                        if (!predicates.contains(predicate) && predicate != null) {
-                            predicates.add(predicate);
+                        String predicate = MRstr.substring(0, MRstr.indexOf('('));
+                        if (!getPredicates().contains(predicate) && predicate != null) {
+                            getPredicates().add(predicate);
 
-                            if (!attributes.containsKey(predicate)) {
-                                attributes.put(predicate, new HashSet<String>());
+                            if (!getAttributes().containsKey(predicate)) {
+                                getAttributes().put(predicate, new HashSet<String>());
                             }
-                            if (!datasetInstances.containsKey(predicate)) {
-                                datasetInstances.put(predicate, new ArrayList<DatasetInstance>());
+                            if (!getDatasetInstances().containsKey(predicate)) {
+                                getDatasetInstances().put(predicate, new ArrayList<DatasetInstance>());
                             }
                         }
 
@@ -1847,7 +1631,6 @@ public class SFX extends DatasetParser {
 
                             String[] args = attributesStr.split(";");
                             if (attributesStr.contains("|")) {
-                                System.out.println(attributesStr);
                                 System.exit(0);
                             }
                             for (String arg : args) {
@@ -1886,8 +1669,8 @@ public class SFX extends DatasetParser {
                                 } else {
                                     attr = arg.replaceAll("_", "");
                                 }
-                                if (!attributes.get(predicate).contains(attr)) {
-                                    attributes.get(predicate).add(attr);
+                                if (!getAttributes().get(predicate).contains(attr)) {
+                                    getAttributes().get(predicate).add(attr);
                                 }
                                 if (!attributeValues.containsKey(attr)) {
                                     attributeValues.put(attr, new HashSet<String>());
@@ -1907,7 +1690,6 @@ public class SFX extends DatasetParser {
                                     value = "x" + index;
                                 }
                                 if (value.isEmpty()) {
-                                    System.out.println("EMPTY VALUE");
                                     System.exit(0);
                                 }
 
@@ -1917,7 +1699,6 @@ public class SFX extends DatasetParser {
                                 if (attributeValues.get(attr).contains("yes")
                                         && attributeValues.get(attr).contains("no")) {
                                     System.out.println(MRstr);
-                                    System.out.println(attributeValues);
                                     System.exit(0);
                                 }
                             }
@@ -1956,9 +1737,9 @@ public class SFX extends DatasetParser {
                                         }
                                     }
                                 } else {
-                                    for (String value : attributeValues.get(attr)) {
+                                    attributeValues.get(attr).forEach((value) -> {
                                         delexAttributeValues.get(attr).add(value);
-                                    }
+                                    });
                                 }
                             }
                         }
@@ -2010,7 +1791,6 @@ public class SFX extends DatasetParser {
                                                 System.out.println(ref);
                                                 System.out.println(attr);
                                                 System.out.println(value);
-                                                System.out.println(attrValuePriorities);
                                                 System.exit(0);
                                             }
                                             if (value.equals("restaurant")
@@ -2062,7 +1842,6 @@ public class SFX extends DatasetParser {
                                                     xCounts.put(attr, xCounts.get(attr) + 1);
                                                 } else {
                                                     System.out.println(value);
-                                                    System.out.println(ref);
                                                     System.exit(0);
                                                 }
                                             }
@@ -2118,19 +1897,15 @@ public class SFX extends DatasetParser {
                             }
                         }
                         int nextCount = MR.getAttributes().keySet().size();
-                        for (HashSet a : MR.getAttributes().values()) {
-                            nextCount += a.size();
-                        }
+                        nextCount = MR.getAttributes().values().stream().map((a) -> a.size()).reduce(nextCount, Integer::sum);
                         if (initCount != nextCount) {
                             System.out.println("initCount != nextCount");
                             System.out.println(initCount);
                             System.out.println(attributeValues.keySet() + " " + attributeValues.values());
                             System.out.println(nextCount);
                             System.out.println(MR.getAttributes().keySet() + " " + MR.getAttributes().values());
-                            System.out.println(MR.getDelexMap());
                         }
-                        ArrayList<String> mentionedValueSequence = new ArrayList<>();
-                        ArrayList<String> mentionedAttributeSequence = new ArrayList<>();
+                        ArrayList<String> observedAttrValueSequence = new ArrayList<>();
 
                         ArrayList<String> realization = new ArrayList<>();
                         ArrayList<String> alignedRealization = new ArrayList<>();
@@ -2140,17 +1915,17 @@ public class SFX extends DatasetParser {
                         for (int w = 0; w < words.length; w++) {
                             String mentionedAttribute = "";
                             if (!words[w].trim().isEmpty()) {
-                                int s = words[w].indexOf("[");
+                                int s = words[w].indexOf('[');
                                 if (s != -1) {
-                                    int e = words[w].indexOf("]", s + 1);
+                                    int e = words[w].indexOf(']', s + 1);
 
                                     String mentionedValue = words[w].substring(s, e + 1);
                                     words[w] = words[w].replace(mentionedValue, "");
                                     if (mentionedValue.contains("+") && !words[w].trim().isEmpty()) {
-                                        mentionedAttribute = mentionedValue.substring(1, mentionedValue.indexOf("+"));
+                                        mentionedAttribute = mentionedValue.substring(1, mentionedValue.indexOf('+'));
 
                                         if (MR.getAttributes().containsKey(mentionedAttribute)) {
-                                            if (mentionedValueSequence.isEmpty()) {
+                                            if (observedAttrValueSequence.isEmpty()) {
                                                 String v = mentionedValue.substring(1, mentionedValue.length() - 1).replaceAll("\\+", "=");
                                                 if (v.endsWith("=X")) {
                                                     //v = v.replace("=X", "=@@$$" + a + "$$@@");
@@ -2163,8 +1938,8 @@ public class SFX extends DatasetParser {
                                                     }
                                                     v = v.replace("=X", "=x" + a);
                                                 }
-                                                mentionedValueSequence.add(v.toLowerCase());
-                                            } else if (!mentionedValueSequence.get(mentionedValueSequence.size() - 1).equals(mentionedValue)) {
+                                                observedAttrValueSequence.add(v.toLowerCase());
+                                            } else if (!observedAttrValueSequence.get(observedAttrValueSequence.size() - 1).equals(mentionedValue)) {
                                                 String v = mentionedValue.substring(1, mentionedValue.length() - 1).replaceAll("\\+", "=");
                                                 if (v.endsWith("=X")) {
                                                     //v = v.replace("=X", "=@@$$" + +a + "$$@@");
@@ -2177,13 +1952,7 @@ public class SFX extends DatasetParser {
                                                     }
                                                     v = v.replace("=X", "=x" + a);
                                                 }
-                                                mentionedValueSequence.add(v.toLowerCase());
-                                            }
-
-                                            if (mentionedAttributeSequence.isEmpty()) {
-                                                mentionedAttributeSequence.add(mentionedAttribute.toLowerCase());
-                                            } else if (!mentionedAttributeSequence.get(mentionedAttributeSequence.size() - 1).equals(mentionedAttribute)) {
-                                                mentionedAttributeSequence.add(mentionedAttribute.toLowerCase());
+                                                observedAttrValueSequence.add(v.toLowerCase());
                                             }
                                         }
                                     } else if (!words[w].trim().isEmpty()) {
@@ -2274,7 +2043,7 @@ public class SFX extends DatasetParser {
                                         } else if (realization.get(realization.size() - 1).startsWith(Action.TOKEN_X)) {
                                             realization.add(words[w].trim().toLowerCase());
                                         } else {
-                                            sillyCompositeWordsInData.put(realization.get(realization.size() - 1) + "s", realization.get(realization.size() - 1) + " s");
+                                            getCompositeWordsInData().put(realization.get(realization.size() - 1) + "s", realization.get(realization.size() - 1) + " s");
                                             realization.set(realization.size() - 1, realization.get(realization.size() - 1) + "s");
                                         }
                                     } else if (words[w].trim().equals("-ly")) {
@@ -2283,7 +2052,7 @@ public class SFX extends DatasetParser {
                                         } else if (realization.get(realization.size() - 1).startsWith(Action.TOKEN_X)) {
                                             realization.add(words[w].trim().toLowerCase());
                                         } else {
-                                            sillyCompositeWordsInData.put(realization.get(realization.size() - 1) + "ly", realization.get(realization.size() - 1) + " -ly");
+                                            getCompositeWordsInData().put(realization.get(realization.size() - 1) + "ly", realization.get(realization.size() - 1) + " -ly");
                                             realization.set(realization.size() - 1, realization.get(realization.size() - 1) + "ly");
                                         }
                                     } else {
@@ -2293,33 +2062,38 @@ public class SFX extends DatasetParser {
                             }
                         }
 
-                        for (String attr : MR.getAttributes().keySet()) {
-                            for (String value : MR.getAttributes().get(attr)) {
-                                if (attr.equals("name") && value.equals("none")) {
-                                    mentionedValueSequence.add(0, attr.toLowerCase() + "=" + value.toLowerCase());
-                                    mentionedAttributeSequence.add(0, attr.toLowerCase());
-                                }
-                            }
+                        MR.getAttributes().keySet().forEach((attr) -> {
+                            MR.getAttributes().get(attr).stream().filter((value) -> (attr.equals("name") && value.equals("none"))).forEachOrdered((value) -> {
+                                observedAttrValueSequence.add(0, attr.toLowerCase() + "=" + value.toLowerCase());
+                            });
+                        });
+
+                        observedAttrValueSequence.add(Action.TOKEN_END);
+                        if (realization.size() > getMaxWordSequenceLength()) {
+                            setMaxWordSequenceLength(realization.size());
                         }
 
-                        mentionedValueSequence.add(Action.TOKEN_END);
-                        mentionedAttributeSequence.add(Action.TOKEN_END);
-                        if (realization.size() > maxWordRealizationSize) {
-                            maxWordRealizationSize = realization.size();
-                        }
-
-                        for (String word : realization) {
+                        realization.forEach((word) -> {
                             if (word.trim().matches("[,.?!;:']")) {
                                 alignedRealization.add(Action.TOKEN_PUNCT);
                             } else {
                                 alignedRealization.add("[]");
                             }
-                        }
+                        });
 
                         //Calculate alignments
                         HashMap<String, HashMap<String, Double>> alignments = new HashMap<>();
-                        for (String attr : MR.getAttributes().keySet()) {
-                            /*if (attr.equals("name")
+                        MR.getAttributes().keySet().forEach((attr) -> {
+                            /*} else {
+                            for (String value : MR.getAttributes().get(attr)) {
+                            if (!value.equals("no")
+                            && !value.equals("yes")
+                            && !value.equals("none")) {
+                            System.out.println(attr + " " + value);
+                            }
+                            }
+                            }*/
+ /*if (attr.equals("name")
                             || attr.equals("type")
                             || attr.equals("pricerange")
                             || attr.equals("price")
@@ -2331,81 +2105,69 @@ public class SFX extends DatasetParser {
                             || attr.equals("food")
                             || attr.equals("count")
                             || attr.equals("goodformeal")) {*/
-
-                            for (String value : MR.getAttributes().get(attr)) {
-                                if (!value.equals("name=none")
-                                        && !value.startsWith(Action.TOKEN_X)
-                                        && !(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+"))) {
-                                    String valueToCheck = value;
-                                    if (value.equals("no")
-                                            || value.equals("yes")
-                                            || value.equals("yes or no")
-                                            || value.equals("none")
-                                            //|| value.equals("dont_care")
-                                            || value.equals("empty")) {
-                                        valueToCheck = attr;
-                                        alignments.put(valueToCheck + ":" + value, new HashMap<String, Double>());
-                                    } else {
-                                        alignments.put(valueToCheck, new HashMap<String, Double>());
-                                    }
-                                    //For all ngrams
-                                    for (int n = 1; n < realization.size(); n++) {
-                                        //Calculate all alignment similarities
-                                        for (int r = 0; r <= realization.size() - n; r++) {
-                                            boolean pass = true;
-                                            for (int j = 0; j < n; j++) {
-                                                if (realization.get(r + j).startsWith(Action.TOKEN_X)
-                                                        || alignedRealization.get(r + j).equals(Action.TOKEN_PUNCT)
-                                                        || StringNLPUtilities.isArticle(realization.get(r + j))
-                                                        || realization.get(r + j).equalsIgnoreCase("and")
-                                                        || realization.get(r + j).equalsIgnoreCase("or")) {
-                                                    pass = false;
-                                                }
+                            MR.getAttributes().get(attr).stream().filter((value) -> (!value.equals("name=none")
+                                    && !value.startsWith(Action.TOKEN_X)
+                                    && !(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+")))).forEachOrdered((value) -> {
+                                String valueToCheck = value;
+                                if (value.equals("no")
+                                        || value.equals("yes")
+                                        || value.equals("yes or no")
+                                        || value.equals("none")
+                                        //|| value.equals("dont_care")
+                                        || value.equals("empty")) {
+                                    valueToCheck = attr;
+                                    alignments.put(valueToCheck + ":" + value, new HashMap<String, Double>());
+                                } else {
+                                    alignments.put(valueToCheck, new HashMap<String, Double>());
+                                }
+                                //For all ngrams
+                                for (int n = 1; n < realization.size(); n++) {
+                                    //Calculate all alignment similarities
+                                    for (int r = 0; r <= realization.size() - n; r++) {
+                                        boolean pass = true;
+                                        for (int j = 0; j < n; j++) {
+                                            if (realization.get(r + j).startsWith(Action.TOKEN_X)
+                                                    || alignedRealization.get(r + j).equals(Action.TOKEN_PUNCT)
+                                                    || StringNLPUtilities.isArticle(realization.get(r + j))
+                                                    || realization.get(r + j).equalsIgnoreCase("and")
+                                                    || realization.get(r + j).equalsIgnoreCase("or")) {
+                                                pass = false;
                                             }
-                                            if (pass) {
-                                                String align = "";
-                                                String compare = "";
-                                                String backwardCompare = "";
-                                                for (int j = 0; j < n; j++) {
-                                                    align += (r + j) + " ";
-                                                    compare += realization.get(r + j);
-                                                    backwardCompare = realization.get(r + j) + backwardCompare;
-                                                }
-                                                align = align.trim();
+                                        }
+                                        if (pass) {
+                                            String align = "";
+                                            String compare = "";
+                                            String backwardCompare = "";
+                                            for (int j = 0; j < n; j++) {
+                                                align += (r + j) + " ";
+                                                compare += realization.get(r + j);
+                                                backwardCompare = realization.get(r + j) + backwardCompare;
+                                            }
+                                            align = align.trim();
 
-                                                Double distance = Levenshtein.getSimilarity(valueToCheck.toLowerCase(), compare.toLowerCase(), true);
-                                                Double backwardDistance = Levenshtein.getSimilarity(valueToCheck.toLowerCase(), backwardCompare.toLowerCase(), true);
+                                            Double distance = Levenshtein.getSimilarity(valueToCheck.toLowerCase(), compare.toLowerCase(), true);
+                                            Double backwardDistance = Levenshtein.getSimilarity(valueToCheck.toLowerCase(), backwardCompare.toLowerCase(), true);
 
-                                                if (backwardDistance > distance) {
-                                                    distance = backwardDistance;
-                                                }
-                                                if (distance > 0.3) {
-                                                    if (value.equals("no")
-                                                            || value.equals("yes")
-                                                            || value.equals("yes or no")
-                                                            || value.equals("none")
-                                                            //|| value.equals("dont_care")
-                                                            || value.equals("empty")) {
-                                                        alignments.get(valueToCheck + ":" + value).put(align, distance);
-                                                    } else {
-                                                        alignments.get(valueToCheck).put(align, distance);
-                                                    }
+                                            if (backwardDistance > distance) {
+                                                distance = backwardDistance;
+                                            }
+                                            if (distance > 0.3) {
+                                                if (value.equals("no")
+                                                        || value.equals("yes")
+                                                        || value.equals("yes or no")
+                                                        || value.equals("none")
+                                                        //|| value.equals("dont_care")
+                                                        || value.equals("empty")) {
+                                                    alignments.get(valueToCheck + ":" + value).put(align, distance);
+                                                } else {
+                                                    alignments.get(valueToCheck).put(align, distance);
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            /*} else {
-                            for (String value : MR.getAttributes().get(attr)) {
-                            if (!value.equals("no")
-                            && !value.equals("yes")
-                            && !value.equals("none")) {
-                            System.out.println(attr + " " + value);
-                            }
-                            }
-                            }*/
-                        }
+                            });
+                        });
 
                         HashSet<String> toRemove = new HashSet<>();
                         for (String value : alignments.keySet()) {
@@ -2441,25 +2203,25 @@ public class SFX extends DatasetParser {
                                 }
                             }
 
-                            if (!valueAlignments.containsKey(bestAlignment[0])) {
-                                valueAlignments.put(bestAlignment[0], new HashMap<ArrayList<String>, Double>());
+                            if (!getValueAlignments().containsKey(bestAlignment[0])) {
+                                getValueAlignments().put(bestAlignment[0], new HashMap<ArrayList<String>, Double>());
                             }
-                            valueAlignments.get(bestAlignment[0]).put(alignedStr, max);
+                            getValueAlignments().get(bestAlignment[0]).put(alignedStr, max);
 
                             alignments.remove(bestAlignment[0]);
-                            for (String value : alignments.keySet()) {
+                            alignments.keySet().forEach((value) -> {
                                 HashSet<String> alignmentsToBeRemoved = new HashSet<>();
-                                for (String alignment : alignments.get(value).keySet()) {
+                                alignments.get(value).keySet().forEach((alignment) -> {
                                     String[] othCoords = alignment.split(" ");
                                     if (Integer.parseInt(coords[0].trim()) <= Integer.parseInt(othCoords[0].trim()) && (Integer.parseInt(coords[coords.length - 1].trim()) >= Integer.parseInt(othCoords[0].trim()))
                                             || (Integer.parseInt(othCoords[0].trim()) <= Integer.parseInt(coords[0].trim()) && Integer.parseInt(othCoords[othCoords.length - 1].trim()) >= Integer.parseInt(coords[0].trim()))) {
                                         alignmentsToBeRemoved.add(alignment);
                                     }
-                                }
-                                for (String alignment : alignmentsToBeRemoved) {
+                                });
+                                alignmentsToBeRemoved.forEach((alignment) -> {
                                     alignments.get(value).remove(alignment);
-                                }
-                            }
+                                });
+                            });
                             toRemove = new HashSet<>();
                             for (String value : alignments.keySet()) {
                                 if (alignments.get(value).isEmpty()) {
@@ -2502,80 +2264,70 @@ public class SFX extends DatasetParser {
                         }
 
                         //boolean existing = false;
-                        DatasetInstance DI = new DatasetInstance(MR, mentionedValueSequence, mentionedAttributeSequence, realizationActions);
-                        for (DatasetInstance existingDI : datasetInstances.get(predicate)) {
-                            //if (existingDI.getMeaningRepresentation().equals(previousAMR)) {
-                            //if (existingDI.getMeaningRepresentation().getAttributes().equals(MR.getAttributes())) {
-                            if (existingDI.getMeaningRepresentation().getAbstractMR().equals(DI.getMeaningRepresentation().getAbstractMR())) {
-                                //existing = true;
-                                //existingDI.mergeDatasetInstance(mentionedValueSequence, mentionedAttributeSequence, realizationActions);
-                                existingDI.mergeDatasetInstance(DI.getEvalMentionedValueSequences(), DI.getEvalMentionedAttributeSequences(), DI.getEvalRealizations());
-                                DI.mergeDatasetInstance(existingDI.getEvalMentionedValueSequences(), existingDI.getEvalMentionedAttributeSequences(), existingDI.getEvalRealizations());
-                            }
-                        }
+                        getObservedAttrValueSequences().add(observedAttrValueSequence);
+                        DatasetInstance DI = new DatasetInstance(MR, realizationActions, postProcessRef(MR, realizationActions));
+                        getDatasetInstances().get(predicate).stream().filter((existingDI) -> (existingDI.getMeaningRepresentation().getAbstractMR().equals(DI.getMeaningRepresentation().getAbstractMR()))).map((existingDI) -> {
+                            //existing = true;
+                            //existingDI.mergeDatasetInstance(mentionedValueSequence, mentionedAttributeSequence, realizationActions);
+                            existingDI.getEvaluationReferences().addAll(DI.getEvaluationReferences());
+                            return existingDI;
+                        }).forEachOrdered((existingDI) -> {
+                            DI.getEvaluationReferences().addAll(existingDI.getEvaluationReferences());
+                        }); //if (existingDI.getMeaningRepresentation().equals(previousAMR)) {
+                        //if (existingDI.getMeaningRepresentation().getAttributes().equals(MR.getAttributes())) {
                         //if (!existing) {
                         //DatasetInstance DI = new DatasetInstance(MR, mentionedValueSequence, mentionedAttributeSequence, realizationActions);
-                        datasetInstances.get(predicate).add(DI);
+                        getDatasetInstances().get(predicate).add(DI);
                         //}
                     }
                     //}
                 }
             }
-            for (String pred : datasetInstances.keySet()) {
-                for (DatasetInstance di : datasetInstances.get(pred)) {
-                    HashSet<String> refs = new HashSet<>();
-                    for (ArrayList<Action> refSeq : di.getEvalRealizations()) {
-                        refs.add(postProcessRef(di, refSeq));
-                    }
-                    di.setEvalReferences(refs);
-                    di.setTrainReference(postProcessRef(di, di.getTrainRealization()));
-                    //System.out.println(di.getMeaningRepresentation().getPredicate());
-                    //System.out.println(di.getMeaningRepresentation().getAttributes());
-                    //System.out.println(di.getEvalReferences());
-                }
-            }
         } catch (JSONException ex) {
-            ex.printStackTrace();
         }
     }
 
     /**
-     *
-     * @param trainingData
-     * @param availableAttributeActions
-     * @param availableWordActions
-     * @return
+     * Infers the feature/cost vectors for the content and word actions.
+     * @return The feature/cost vectors for the content and word actions
      */
-    public Object[] createTrainingDatasets(ArrayList<DatasetInstance> trainingData, HashMap<String, HashSet<String>> availableAttributeActions, HashMap<String, HashMap<String, HashSet<Action>>> availableWordActions) {
-        ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>> attrTrainingData = new ConcurrentHashMap<>();
+    public Object[] inferFeatureAndCostVectors() {
+        ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>> contentTrainingData = new ConcurrentHashMap<>();
         ConcurrentHashMap<DatasetInstance, HashMap<String, HashMap<String, ArrayList<Instance>>>> wordTrainingData = new ConcurrentHashMap<>();
 
-        if (!availableWordActions.isEmpty() && !predicates.isEmpty()/* && !arguments.isEmpty()*/) {
-            for (DatasetInstance di : trainingData) {
-                attrTrainingData.put(di, new HashMap<String, ArrayList<Instance>>());
+        if (!getAvailableWordActions().isEmpty() && !getPredicates().isEmpty()) {
+            // Initialize collections
+            getTrainingData().stream().map((di) -> {
+                contentTrainingData.put(di, new HashMap<String, ArrayList<Instance>>());
+                return di;
+            }).map((di) -> {
                 wordTrainingData.put(di, new HashMap<String, HashMap<String, ArrayList<Instance>>>());
-                for (String predicate : predicates) {
-                    attrTrainingData.get(di).put(predicate, new ArrayList<Instance>());
+                return di;
+            }).forEachOrdered((di) -> {
+                getPredicates().stream().map((predicate) -> {
+                    contentTrainingData.get(di).put(predicate, new ArrayList<Instance>());
+                    return predicate;
+                }).map((predicate) -> {
                     wordTrainingData.get(di).put(predicate, new HashMap<String, ArrayList<Instance>>());
+                    return predicate;
+                }).forEachOrdered((predicate) -> {
+                    getAttributes().get(predicate).stream().filter((attribute) -> (!wordTrainingData.get(di).get(predicate).containsKey(attribute))).forEachOrdered((attribute) -> {
+                        wordTrainingData.get(di).get(predicate).put(attribute, new ArrayList<Instance>());
+                    });
+                });
+            });
 
-                    for (String attribute : attributes.get(predicate)) {
-                        if (!wordTrainingData.get(di).get(predicate).containsKey(attribute)) {
-                            wordTrainingData.get(di).get(predicate).put(attribute, new ArrayList<Instance>());
-                        }
-                    }
-                }
-            }
-
-            ExecutorService executor = Executors.newFixedThreadPool(threadsCount);
-            for (DatasetInstance di : trainingData) {
-                executor.execute(new createSFXTrainingDatasetThread(di, this, availableAttributeActions, availableWordActions, attrTrainingData, wordTrainingData));
-            }
+            // Infer the vectors in parallel processes to save time
+            ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
+            getTrainingData().forEach((di) -> {
+                executor.execute(new InferSFXVectorsThread(di, this, contentTrainingData, wordTrainingData));
+            });
             executor.shutdown();
             while (!executor.isTerminated()) {
             }
         }
         Object[] results = new Object[2];
-        results[0] = attrTrainingData;
+        results[0] = contentTrainingData;
         results[1] = wordTrainingData;
         return results;
     }
@@ -2586,50 +2338,43 @@ public class SFX extends DatasetParser {
      */
     public void createRandomAlignments(ArrayList<DatasetInstance> trainingData) {
         HashMap<String, HashMap<ArrayList<Action>, HashMap<Action, Integer>>> punctPatterns = new HashMap<>();
-        for (String predicate : predicates) {
+        getPredicates().forEach((predicate) -> {
             punctPatterns.put(predicate, new HashMap<ArrayList<Action>, HashMap<Action, Integer>>());
-        }
+        });
         HashMap<DatasetInstance, ArrayList<Action>> punctRealizations = new HashMap<DatasetInstance, ArrayList<Action>>();
 
         HashMap<ArrayList<Action>, ArrayList<Action>> calculatedRealizationsCache = new HashMap<>();
-        for (DatasetInstance di : trainingData) {
+        trainingData.stream().map((di) -> {
             HashSet<ArrayList<Action>> initRealizations = new HashSet<>();
-            for (ArrayList<Action> real : di.getEvalRealizations()) {
-                if (!calculatedRealizationsCache.containsKey(real)) {
-                    initRealizations.add(real);
-                }
+            if (!calculatedRealizationsCache.containsKey(di.getDirectReferenceSequence())) {
+                initRealizations.add(di.getDirectReferenceSequence());
             }
-            if (!calculatedRealizationsCache.containsKey(di.getTrainRealization())) {
-                initRealizations.add(di.getTrainRealization());
-            }
-            for (ArrayList<Action> realization : initRealizations) {
+            initRealizations.stream().map((realization) -> {
                 HashMap<String, HashSet<String>> values = new HashMap<>();
-                for (String attr : di.getMeaningRepresentation().getAttributes().keySet()) {
+                di.getMeaningRepresentation().getAttributes().keySet().forEach((attr) -> {
                     values.put(attr, new HashSet<>(di.getMeaningRepresentation().getAttributes().get(attr)));
-                }
-
+                });
                 ArrayList<Action> randomRealization = new ArrayList<Action>();
-                for (Action a : realization) {
+                realization.forEach((a) -> {
                     if (a.getAttribute().equals(Action.TOKEN_PUNCT)) {
                         randomRealization.add(new Action(a.getWord(), a.getAttribute()));
                     } else {
                         randomRealization.add(new Action(a.getWord(), ""));
                     }
-                }
-
+                });
                 HashSet<String> unalignedAttrs = new HashSet<>();
                 if (values.keySet().isEmpty()) {
                     for (int i = 0; i < randomRealization.size(); i++) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
-                            if (!attributes.get(di.getMeaningRepresentation().getPredicate()).contains("empty")) {
-                                attributes.get(di.getMeaningRepresentation().getPredicate()).add("empty");
+                            if (!getAttributes().get(di.getMeaningRepresentation().getPredicate()).contains("empty")) {
+                                getAttributes().get(di.getMeaningRepresentation().getPredicate()).add("empty");
                             }
                             randomRealization.get(i).setAttribute("empty=empty");
                         }
                     }
                 } else {
-                    for (String attr : values.keySet()) {
-                        for (String value : values.get(attr)) {
+                    values.keySet().forEach((attr) -> {
+                        values.get(attr).forEach((value) -> {
                             if ((!(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+") || value.startsWith(Action.TOKEN_X)))
                                     && !value.isEmpty()) {
                                 String valueToCheck = value;
@@ -2646,28 +2391,26 @@ public class SFX extends DatasetParser {
                                     unalignedAttrs.add(attr + "=" + value);
                                 }
                                 if (!valueToCheck.equals("empty:empty")
-                                        && valueAlignments.containsKey(valueToCheck)) {
+                                        && getValueAlignments().containsKey(valueToCheck)) {
                                     unalignedAttrs.add(attr + "=" + valueToCheck);
                                 }
                             } else {
                                 unalignedAttrs.add(attr + "=" + value);
                             }
-                        }
-                    }
-
-                    for (String attrValue : unalignedAttrs) {
-                        int index = randomGen.nextInt(randomRealization.size());
+                        });
+                    });
+                    unalignedAttrs.forEach((attrValue) -> {
+                        int index = getRandomGen().nextInt(randomRealization.size());
                         boolean change = false;
                         while (!change) {
                             if (!randomRealization.get(index).getAttribute().equals(Action.TOKEN_PUNCT)) {
                                 randomRealization.get(index).setAttribute(attrValue.toLowerCase().trim());
                                 change = true;
                             } else {
-                                index = randomGen.nextInt(randomRealization.size());
+                                index = getRandomGen().nextInt(randomRealization.size());
                             }
                         }
-                    }
-
+                    });
                     String previousAttr = "";
                     for (int i = 0; i < randomRealization.size(); i++) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -2681,7 +2424,6 @@ public class SFX extends DatasetParser {
                         }
                     }
                     //System.out.println("1: " + randomRealization);
-
                     previousAttr = "";
                     for (int i = randomRealization.size() - 1; i >= 0; i--) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -2695,7 +2437,6 @@ public class SFX extends DatasetParser {
                         }
                     }
                     //System.out.println("2: " + randomRealization);
-
                     previousAttr = "";
                     for (int i = 0; i < randomRealization.size(); i++) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -2707,7 +2448,6 @@ public class SFX extends DatasetParser {
                         }
                     }
                     //System.out.println("3: " + randomRealization);
-
                     previousAttr = "";
                     for (int i = randomRealization.size() - 1; i >= 0; i--) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -2720,7 +2460,6 @@ public class SFX extends DatasetParser {
                     }
                     //System.out.println("4: " + randomRealization);
                 }
-
                 //FIX WRONG @PUNCT@
                 String previousAttr = "";
                 for (int i = randomRealization.size() - 1; i >= 0; i--) {
@@ -2733,11 +2472,9 @@ public class SFX extends DatasetParser {
                     }
                 }
                 ArrayList<Action> cleanRandomRealization = new ArrayList<>();
-                for (Action a : randomRealization) {
-                    if (!a.getAttribute().equals(Action.TOKEN_PUNCT)) {
-                        cleanRandomRealization.add(a);
-                    }
-                }
+                randomRealization.stream().filter((a) -> (!a.getAttribute().equals(Action.TOKEN_PUNCT))).forEachOrdered((a) -> {
+                    cleanRandomRealization.add(a);
+                });
                 //ADD END TOKENS
                 ArrayList<Action> endRandomRealization = new ArrayList<>();
                 previousAttr = "";
@@ -2754,19 +2491,17 @@ public class SFX extends DatasetParser {
                 endRandomRealization.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
                 calculatedRealizationsCache.put(realization, endRandomRealization);
                 //System.out.println(di.getMeaningRepresentation().getPredicate() + ": " + endRandomRealization);
-
                 ArrayList<String> attrValues = new ArrayList<String>();
-                for (Action a : endRandomRealization) {
+                endRandomRealization.forEach((a) -> {
                     if (attrValues.isEmpty()) {
                         attrValues.add(a.getAttribute());
                     } else if (!attrValues.get(attrValues.size() - 1).equals(a.getAttribute())) {
                         attrValues.add(a.getAttribute());
                     }
+                });
+                if (attrValues.size() > getMaxContentSequenceLength()) {
+                    setMaxContentSequenceLength(attrValues.size());
                 }
-                if (attrValues.size() > maxAttrRealizationSize) {
-                    maxAttrRealizationSize = attrValues.size();
-                }
-
                 ArrayList<Action> punctRealization = new ArrayList<>();
                 punctRealization.addAll(randomRealization);
                 previousAttr = "";
@@ -2783,16 +2518,20 @@ public class SFX extends DatasetParser {
                 if (!punctRealization.get(punctRealization.size() - 1).getWord().equals(Action.TOKEN_END)) {
                     punctRealization.add(new Action(Action.TOKEN_END, previousAttr));
                 }
+                return punctRealization;
+            }).map((punctRealization) -> {
                 punctRealizations.put(di, punctRealization);
+                return punctRealization;
+            }).forEachOrdered((punctRealization) -> {
                 for (int i = 0; i < punctRealization.size(); i++) {
                     Action a = punctRealization.get(i);
                     if (a.getAttribute().equals(Action.TOKEN_PUNCT)) {
                         boolean legal = true;
                         ArrayList<Action> surroundingActions = new ArrayList<>();
                         /*if (i - 3 >= 0) {
-                            surroundingActions.add(punctRealization.get(i - 3));
+                        surroundingActions.add(punctRealization.get(i - 3));
                         } else {
-                            surroundingActions.add(null);
+                        surroundingActions.add(null);
                         }*/
                         if (i - 2 >= 0) {
                             surroundingActions.add(punctRealization.get(i - 2));
@@ -2830,68 +2569,15 @@ public class SFX extends DatasetParser {
                         }
                     }
                 }
-                /*for (int i = 2; i <= 6; i++) {
-                for (int j = 0; j < cleanRandomRealization.size() - i; j++) {
-                String ngram = "";
-                for (int randomGen = 0; randomGen < i; randomGen++) {
-                ngram += cleanRandomRealization.get(j + randomGen).getWord() + "|";
-                }
-                ngram = ngram.substring(0, ngram.length() - 1);
-                if (!nGrams.containsKey(i)) {
-                nGrams.put(i, new HashSet<String>());
-                }
-                nGrams.get(i).add(ngram);
-                }
-                }*/
-            }
-
-            HashSet<ArrayList<Action>> newRealizations = new HashSet<>();
-            for (ArrayList<Action> real : di.getEvalRealizations()) {
-                newRealizations.add(calculatedRealizationsCache.get(real));
-            }
-            di.setEvalRealizations(newRealizations);
-            di.setTrainRealization(calculatedRealizationsCache.get(di.getTrainRealization()));
-            for (ArrayList<Action> rr : di.getEvalRealizations()) {
-                for (Action key : rr) {
-                    if (key.getWord().trim().isEmpty()) {
-                        System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
-                        System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
-                        System.out.println("RR " + rr);
-                        System.out.println("RR " + key);
-                        System.exit(0);
-                    }
-                    if (key.getAttribute().equals("[]")
-                            || key.getAttribute().isEmpty()) {
-                        System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
-                        System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
-                        System.out.println("RR " + rr);
-                        System.out.println("RR " + key);
-                        System.exit(0);
-                    }
-                }
-            }
-            for (Action key : di.getTrainRealization()) {
-                if (key.getWord().trim().isEmpty()) {
-                    System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
-                    System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
-                    System.out.println("RR " + key);
-                    System.exit(0);
-                }
-                if (key.getAttribute().equals("[]")
-                        || key.getAttribute().isEmpty()) {
-                    System.out.println("RR " + di.getMeaningRepresentation().getMRstr());
-                    System.out.println("RR " + di.getMeaningRepresentation().getAttributes());
-                    System.out.println("RR " + di.getTrainRealization());
-                    System.out.println("RR " + key);
-                    System.exit(0);
-                }
-            }
-            //di.setRealizations(randomRealizations);
-        }
-
-        for (DatasetInstance di : punctRealizations.keySet()) {
+            });
+            return di;
+        }).map((di) -> {
+            di.setDirectReferenceSequence(calculatedRealizationsCache.get(di.getDirectReferenceSequence()));
+            return di;
+        });
+        punctRealizations.keySet().forEach((di) -> {
             ArrayList<Action> punctRealization = punctRealizations.get(di);
-            for (ArrayList<Action> surrounds : punctPatterns.get(di.getMeaningRepresentation().getPredicate()).keySet()) {
+            punctPatterns.get(di.getMeaningRepresentation().getPredicate()).keySet().forEach((surrounds) -> {
                 int beforeNulls = 0;
                 if (surrounds.get(0) == null) {
                     beforeNulls++;
@@ -2932,10 +2618,10 @@ public class SFX extends DatasetParser {
                         }
                     }
                 }
-            }
-        }
-        for (String predicate : punctPatterns.keySet()) {
-            for (ArrayList<Action> punct : punctPatterns.get(predicate).keySet()) {
+            });
+        });
+        punctPatterns.keySet().forEach((predicate) -> {
+            punctPatterns.get(predicate).keySet().forEach((punct) -> {
                 Action bestAction = null;
                 int bestCount = 0;
                 for (Action a : punctPatterns.get(predicate).get(punct).keySet()) {
@@ -2947,45 +2633,39 @@ public class SFX extends DatasetParser {
                         bestAction = a;
                     }
                 }
-                if (!punctuationPatterns.containsKey(predicate)) {
-                    punctuationPatterns.put(predicate, new HashMap<ArrayList<Action>, Action>());
+                if (!getPunctuationPatterns().containsKey(predicate)) {
+                    getPunctuationPatterns().put(predicate, new HashMap<ArrayList<Action>, Action>());
                 }
                 if (!bestAction.getWord().isEmpty()) {
-                    punctuationPatterns.get(predicate).put(punct, bestAction);
+                    getPunctuationPatterns().get(predicate).put(punct, bestAction);
                 }
-            }
-        }
+            });
+        });
     }
 
     /**
      *
      * @param trainingData
      */
+    @Override
     public void createNaiveAlignments(ArrayList<DatasetInstance> trainingData) {
         HashMap<String, HashMap<ArrayList<Action>, HashMap<Action, Integer>>> punctPatterns = new HashMap<>();
-        for (String predicate : predicates) {
+        getPredicates().forEach((predicate) -> {
             punctPatterns.put(predicate, new HashMap<ArrayList<Action>, HashMap<Action, Integer>>());
-        }
+        });
         HashMap<DatasetInstance, ArrayList<Action>> punctRealizations = new HashMap<DatasetInstance, ArrayList<Action>>();
 
-        for (DatasetInstance di : trainingData) {
+        trainingData.stream().map((di) -> {
             HashMap<ArrayList<Action>, ArrayList<Action>> calculatedRealizationsCache = new HashMap<>();
             HashSet<ArrayList<Action>> initRealizations = new HashSet<>();
-            /*for (ArrayList<Action> real : di.getEvalRealizations()) {
-                if (!calculatedRealizationsCache.containsKey(real)) {
-                    initRealizations.add(real);
-                }
-            }*/
-            if (!calculatedRealizationsCache.containsKey(di.getTrainRealization())) {
-                initRealizations.add(di.getTrainRealization());
+            if (!calculatedRealizationsCache.containsKey(di.getDirectReferenceSequence())) {
+                initRealizations.add(di.getDirectReferenceSequence());
             }
-
-            for (ArrayList<Action> realization : initRealizations) {
+            initRealizations.stream().map((realization) -> {
                 HashMap<String, HashSet<String>> values = new HashMap<>();
-                for (String attr : di.getMeaningRepresentation().getAttributes().keySet()) {
+                di.getMeaningRepresentation().getAttributes().keySet().forEach((attr) -> {
                     values.put(attr, new HashSet<>(di.getMeaningRepresentation().getAttributes().get(attr)));
-                }
-
+                });
                 ArrayList<Action> randomRealization = new ArrayList<>();
                 for (int i = 0; i < realization.size(); i++) {
                     Action a = realization.get(i);
@@ -2995,12 +2675,11 @@ public class SFX extends DatasetParser {
                         randomRealization.add(new Action(a.getWord(), ""));
                     }
                 }
-
                 if (values.keySet().isEmpty()) {
                     for (int i = 0; i < randomRealization.size(); i++) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
-                            if (!attributes.get(di.getMeaningRepresentation().getPredicate()).contains("empty")) {
-                                attributes.get(di.getMeaningRepresentation().getPredicate()).add("empty");
+                            if (!getAttributes().get(di.getMeaningRepresentation().getPredicate()).contains("empty")) {
+                                getAttributes().get(di.getMeaningRepresentation().getPredicate()).add("empty");
                             }
                             randomRealization.get(i).setAttribute("empty=empty");
                         }
@@ -3008,47 +2687,44 @@ public class SFX extends DatasetParser {
                 } else {
                     HashMap<Double, HashMap<String, ArrayList<Integer>>> indexAlignments = new HashMap<>();
                     HashSet<String> noValueAttrs = new HashSet<String>();
-                    for (String attr : values.keySet()) {
-                        for (String value : values.get(attr)) {
-                            if ((!(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+") || value.startsWith(Action.TOKEN_X)))
-                                    && !value.isEmpty()) {
-                                String valueToCheck = value;
-                                if (valueToCheck.equals("no")
-                                        || valueToCheck.equals("yes")
-                                        || valueToCheck.equals("yes or no")
-                                        || valueToCheck.equals("none")
-                                        //|| attr.equals("dont_care")
-                                        || valueToCheck.equals("empty")) {
-                                    valueToCheck = attr + ":" + value;
-                                    noValueAttrs.add(attr + "=" + value);
-                                }
-                                if (valueToCheck.equals(attr)) {
-                                    noValueAttrs.add(attr + "=" + value);
-                                }
-                                if (!valueToCheck.equals("empty:empty")
-                                        && valueAlignments.containsKey(valueToCheck)) {
-                                    for (ArrayList<String> align : valueAlignments.get(valueToCheck).keySet()) {
-                                        int n = align.size();
-                                        for (int i = 0; i <= randomRealization.size() - n; i++) {
-                                            ArrayList<String> compare = new ArrayList<String>();
-                                            ArrayList<Integer> indexAlignment = new ArrayList<Integer>();
-                                            for (int j = 0; j < n; j++) {
-                                                compare.add(randomRealization.get(i + j).getWord());
-                                                indexAlignment.add(i + j);
-                                            }
-                                            if (compare.equals(align)) {
-                                                if (!indexAlignments.containsKey(valueAlignments.get(valueToCheck).get(align))) {
-                                                    indexAlignments.put(valueAlignments.get(valueToCheck).get(align), new HashMap());
-                                                }
-                                                indexAlignments.get(valueAlignments.get(valueToCheck).get(align)).put(attr + "=" + valueToCheck, indexAlignment);
-                                            }
+                    values.keySet().forEach((attr) -> {
+                        values.get(attr).stream().filter((value) -> ((!(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+") || value.startsWith(Action.TOKEN_X)))
+                                && !value.isEmpty())).map((value) -> {
+                            String valueToCheck = value;
+                            if (valueToCheck.equals("no")
+                                    || valueToCheck.equals("yes")
+                                    || valueToCheck.equals("yes or no")
+                                    || valueToCheck.equals("none")
+                                    //|| attr.equals("dont_care")
+                                    || valueToCheck.equals("empty")) {
+                                valueToCheck = attr + ":" + value;
+                                noValueAttrs.add(attr + "=" + value);
+                            }
+                            if (valueToCheck.equals(attr)) {
+                                noValueAttrs.add(attr + "=" + value);
+                            }
+                            return valueToCheck;
+                        }).filter((valueToCheck) -> (!valueToCheck.equals("empty:empty")
+                                && getValueAlignments().containsKey(valueToCheck))).forEachOrdered((valueToCheck) -> {
+                            for (ArrayList<String> align : getValueAlignments().get(valueToCheck).keySet()) {
+                                int n = align.size();
+                                for (int i = 0; i <= randomRealization.size() - n; i++) {
+                                    ArrayList<String> compare = new ArrayList<String>();
+                                    ArrayList<Integer> indexAlignment = new ArrayList<Integer>();
+                                    for (int j = 0; j < n; j++) {
+                                        compare.add(randomRealization.get(i + j).getWord());
+                                        indexAlignment.add(i + j);
+                                    }
+                                    if (compare.equals(align)) {
+                                        if (!indexAlignments.containsKey(getValueAlignments().get(valueToCheck).get(align))) {
+                                            indexAlignments.put(getValueAlignments().get(valueToCheck).get(align), new HashMap());
                                         }
+                                        indexAlignments.get(getValueAlignments().get(valueToCheck).get(align)).put(attr + "=" + valueToCheck, indexAlignment);
                                     }
                                 }
                             }
-                        }
-                    }
-
+                        });
+                    });
                     ArrayList<Double> similarities = new ArrayList<>(indexAlignments.keySet());
                     Collections.sort(similarities);
                     HashSet<String> assignedAttrValues = new HashSet<String>();
@@ -3072,17 +2748,13 @@ public class SFX extends DatasetParser {
                             }
                         }
                     }
-
-                    for (Action a : randomRealization) {
-                        if (a.getWord().startsWith(Action.TOKEN_X)) {
-                            String attr = a.getWord().substring(3, a.getWord().lastIndexOf('_')).toLowerCase().trim();
-                            a.setAttribute(attr + "=" + a.getWord());
-                        }
-                    }
                     //System.out.println("-1: " + randomRealization);
-
+                    randomRealization.stream().filter((a) -> (a.getWord().startsWith(Action.TOKEN_X))).forEachOrdered((a) -> {
+                        String attr = a.getWord().substring(3, a.getWord().lastIndexOf('_')).toLowerCase().trim();
+                        a.setAttribute(attr + "=" + a.getWord());
+                    });
                     HashSet<String> unalignedNoValueAttrs = new HashSet<>();
-                    for (String noValueAttr : noValueAttrs) {
+                    noValueAttrs.forEach((noValueAttr) -> {
                         boolean assigned = false;
                         for (Action a : randomRealization) {
                             if (a.getAttribute().equals(noValueAttr)) {
@@ -3092,8 +2764,7 @@ public class SFX extends DatasetParser {
                         if (!assigned) {
                             unalignedNoValueAttrs.add(noValueAttr);
                         }
-                    }
-
+                    });
                     boolean isAllEmpty = true;
                     boolean hasSpace = false;
                     for (int i = 0; i < randomRealization.size(); i++) {
@@ -3108,18 +2779,18 @@ public class SFX extends DatasetParser {
                         }
                     }
                     if (isAllEmpty && hasSpace && !unalignedNoValueAttrs.isEmpty()) {
-                        for (String attrValue : unalignedNoValueAttrs) {
-                            int index = randomGen.nextInt(randomRealization.size());
+                        unalignedNoValueAttrs.forEach((attrValue) -> {
+                            int index = getRandomGen().nextInt(randomRealization.size());
                             boolean change = false;
                             while (!change) {
                                 if (!randomRealization.get(index).getAttribute().equals(Action.TOKEN_PUNCT)) {
                                     randomRealization.get(index).setAttribute(attrValue.toLowerCase().trim());
                                     change = true;
                                 } else {
-                                    index = randomGen.nextInt(randomRealization.size());
+                                    index = getRandomGen().nextInt(randomRealization.size());
                                 }
                             }
-                        }
+                        });
                     }
                     //System.out.println(isAllEmpty + " " + hasSpace + " " + unalignedNoValueAttrs);
                     //System.out.println(">> " + noValueAttrs);
@@ -3153,7 +2824,6 @@ public class SFX extends DatasetParser {
                         }
                     }
                     //System.out.println("1: " + randomRealization);
-
                     previousAttr = "";
                     for (int i = randomRealization.size() - 1; i >= 0; i--) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -3167,7 +2837,6 @@ public class SFX extends DatasetParser {
                         }
                     }
                     //System.out.println("2: " + randomRealization);
-
                     previousAttr = "";
                     for (int i = 0; i < randomRealization.size(); i++) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -3179,7 +2848,6 @@ public class SFX extends DatasetParser {
                         }
                     }
                     //System.out.println("3: " + randomRealization);
-
                     previousAttr = "";
                     for (int i = randomRealization.size() - 1; i >= 0; i--) {
                         if (randomRealization.get(i).getAttribute().isEmpty() || randomRealization.get(i).getAttribute().equals("[]")) {
@@ -3192,7 +2860,6 @@ public class SFX extends DatasetParser {
                     }
                     //System.out.println("4: " + randomRealization);
                 }
-
                 //FIX WRONG @PUNCT@
                 String previousAttr = "";
                 for (int i = randomRealization.size() - 1; i >= 0; i--) {
@@ -3205,11 +2872,9 @@ public class SFX extends DatasetParser {
                     }
                 }
                 ArrayList<Action> cleanRandomRealization = new ArrayList<>();
-                for (Action a : randomRealization) {
-                    if (!a.getAttribute().equals(Action.TOKEN_PUNCT)) {
-                        cleanRandomRealization.add(a);
-                    }
-                }
+                randomRealization.stream().filter((a) -> (!a.getAttribute().equals(Action.TOKEN_PUNCT))).forEachOrdered((a) -> {
+                    cleanRandomRealization.add(a);
+                });
                 //ADD END TOKENS
                 ArrayList<Action> endRandomRealization = new ArrayList<>();
                 previousAttr = "";
@@ -3226,23 +2891,20 @@ public class SFX extends DatasetParser {
                 endRandomRealization.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
                 calculatedRealizationsCache.put(realization, endRandomRealization);
                 //System.out.println(di.getMeaningRepresentation().getPredicate() + ": " + endRandomRealization);
-
                 ArrayList<String> attrValues = new ArrayList<String>();
-                for (Action a : endRandomRealization) {
+                endRandomRealization.forEach((a) -> {
                     if (attrValues.isEmpty()) {
                         attrValues.add(a.getAttribute());
                     } else if (!attrValues.get(attrValues.size() - 1).equals(a.getAttribute())) {
                         attrValues.add(a.getAttribute());
                     }
+                });
+                if (attrValues.size() > getMaxContentSequenceLength()) {
+                    setMaxContentSequenceLength(attrValues.size());
                 }
-                if (attrValues.size() > maxAttrRealizationSize) {
-                    maxAttrRealizationSize = attrValues.size();
-                }
-
                 ArrayList<Action> punctRealization = new ArrayList<>();
                 punctRealization.addAll(randomRealization);
                 previousAttr = "";
-
                 for (int i = 0; i < punctRealization.size(); i++) {
                     if (!punctRealization.get(i).getAttribute().equals(Action.TOKEN_PUNCT)) {
                         if (!punctRealization.get(i).getAttribute().equals(previousAttr)
@@ -3256,7 +2918,11 @@ public class SFX extends DatasetParser {
                 if (!punctRealization.get(punctRealization.size() - 1).getWord().equals(Action.TOKEN_END)) {
                     punctRealization.add(new Action(Action.TOKEN_END, previousAttr));
                 }
+                return punctRealization;
+            }).map((punctRealization) -> {
                 punctRealizations.put(di, punctRealization);
+                return punctRealization;
+            }).forEachOrdered((punctRealization) -> {
                 for (int i = 0; i < punctRealization.size(); i++) {
                     Action a = punctRealization.get(i);
                     if (a.getAttribute().equals(Action.TOKEN_PUNCT)) {
@@ -3298,11 +2964,12 @@ public class SFX extends DatasetParser {
                         }
                     }
                 }
-            }
-            di.setTrainRealization(calculatedRealizationsCache.get(di.getTrainRealization()));
-
+            });
+            di.setDirectReferenceSequence(calculatedRealizationsCache.get(di.getDirectReferenceSequence()));
+            return di;
+        }).forEachOrdered((di) -> {
             HashSet<String> attrValuesToBeMentioned = new HashSet<>();
-            for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
+            di.getMeaningRepresentation().getAttributes().keySet().forEach((attribute) -> {
                 int a = 0;
                 for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
                     if (value.startsWith("\"x")) {
@@ -3313,34 +2980,37 @@ public class SFX extends DatasetParser {
                     }
                     attrValuesToBeMentioned.add(attribute + "=" + value);
                 }
-            }
-            for (Action key : di.getTrainRealization()) {
+            });
+            di.getDirectReferenceSequence().stream().map((key) -> {
                 attrValuesToBeMentioned.remove(key.getAttribute());
+                return key;
+            }).map((key) -> {
                 if (key.getWord().trim().isEmpty()) {
                     System.out.println("RRNATR " + di.getMeaningRepresentation().getMRstr());
                     System.out.println("RRNATR " + di.getMeaningRepresentation().getAttributes());
-                    System.out.println("RRNATR " + key);
                     System.exit(0);
                 }
-                if (key.getAttribute().equals("[]")
-                        || key.getAttribute().isEmpty()) {
-                    System.out.println("RRNATR " + di.getMeaningRepresentation().getMRstr());
-                    System.out.println("RRNATR " + di.getMeaningRepresentation().getAttributes());
-                    System.out.println("RRNATR " + di.getTrainRealization());
-                    System.out.println("RRNATR " + key);
-                    System.exit(0);
-                }
-            }
+                return key;
+            }).filter((key) -> (key.getAttribute().equals("[]")
+                    || key.getAttribute().isEmpty())).map((key) -> {
+                System.out.println("RRNATR " + di.getMeaningRepresentation().getMRstr());
+                System.out.println("RRNATR " + di.getMeaningRepresentation().getAttributes());
+                System.out.println("RRNATR " + di.getDirectReferenceSequence());
+                System.out.println("RRNATR " + key);
+                return key;
+            }).forEachOrdered((_item) -> {
+                System.exit(0);
+            });
             if (!attrValuesToBeMentioned.isEmpty()) {
                 System.out.println("EE " + di.getMeaningRepresentation().getMRstr());
                 System.out.println("EE " + di.getMeaningRepresentation().getAttributes());
-                System.out.println("EE " + di.getTrainRealization());
+                System.out.println("EE " + di.getDirectReferenceSequence());
                 System.out.println(attrValuesToBeMentioned);
             }
-        }
-        for (DatasetInstance di : punctRealizations.keySet()) {
+        });
+        punctRealizations.keySet().forEach((di) -> {
             ArrayList<Action> punctRealization = punctRealizations.get(di);
-            for (ArrayList<Action> surrounds : punctPatterns.get(di.getMeaningRepresentation().getPredicate()).keySet()) {
+            punctPatterns.get(di.getMeaningRepresentation().getPredicate()).keySet().forEach((surrounds) -> {
                 int beforeNulls = 0;
                 if (surrounds.get(0) == null) {
                     beforeNulls++;
@@ -3381,10 +3051,10 @@ public class SFX extends DatasetParser {
                         }
                     }
                 }
-            }
-        }
-        for (String predicate : punctPatterns.keySet()) {
-            for (ArrayList<Action> punct : punctPatterns.get(predicate).keySet()) {
+            });
+        });
+        punctPatterns.keySet().forEach((predicate) -> {
+            punctPatterns.get(predicate).keySet().forEach((punct) -> {
                 Action bestAction = null;
                 int bestCount = 0;
                 for (Action a : punctPatterns.get(predicate).get(punct).keySet()) {
@@ -3396,14 +3066,14 @@ public class SFX extends DatasetParser {
                         bestAction = a;
                     }
                 }
-                if (!punctuationPatterns.containsKey(predicate)) {
-                    punctuationPatterns.put(predicate, new HashMap<ArrayList<Action>, Action>());
+                if (!getPunctuationPatterns().containsKey(predicate)) {
+                    getPunctuationPatterns().put(predicate, new HashMap<ArrayList<Action>, Action>());
                 }
                 if (!bestAction.getWord().isEmpty()) {
-                    punctuationPatterns.get(predicate).put(punct, bestAction);
+                    getPunctuationPatterns().get(predicate).put(punct, bestAction);
                 }
-            }
-        }
+            });
+        });
     }
 
     /**
@@ -3417,27 +3087,30 @@ public class SFX extends DatasetParser {
      * @param availableAttributeActions
      * @return
      */
-    public Instance createAttrInstance(String predicate, String bestAction, ArrayList<String> previousGeneratedAttrs, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesToBeMentioned, MeaningRepresentation MR, HashMap<String, HashSet<String>> availableAttributeActions) {
+    @Override
+    public Instance createContentInstance(String predicate, String bestAction, ArrayList<String> previousGeneratedAttrs, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesToBeMentioned, MeaningRepresentation MR, HashMap<String, HashSet<String>> availableAttributeActions) {
         TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
 
         HashSet<String> attrsToBeMentioned = new HashSet<>();
-        for (String attrValue : attrValuesToBeMentioned) {
+        attrValuesToBeMentioned.stream().map((attrValue) -> {
             String attr = attrValue;
             if (attr.contains("=")) {
                 attr = attrValue.substring(0, attrValue.indexOf('='));
             }
+            return attr;
+        }).forEachOrdered((attr) -> {
             attrsToBeMentioned.add(attr);
-        }
+        });
         if (!bestAction.isEmpty()) {
             //COSTS
             if (bestAction.equals(Action.TOKEN_END)) {
                 costs.put(Action.TOKEN_END, 0.0);
-                for (String action : availableAttributeActions.get(predicate)) {
+                availableAttributeActions.get(predicate).forEach((action) -> {
                     costs.put(action, 1.0);
-                }
+                });
             } else if (!bestAction.equals("@TOK@")) {
                 costs.put(Action.TOKEN_END, 1.0);
-                for (String action : availableAttributeActions.get(predicate)) {
+                availableAttributeActions.get(predicate).forEach((action) -> {
                     String attr = bestAction;
                     if (bestAction.contains("=")) {
                         attr = bestAction.substring(0, bestAction.indexOf('=')).toLowerCase().trim();
@@ -3447,10 +3120,10 @@ public class SFX extends DatasetParser {
                     } else {
                         costs.put(action, 1.0);
                     }
-                }
+                });
             }
         }
-        return createAttrInstanceWithCosts(predicate, costs, previousGeneratedAttrs, attrValuesAlreadyMentioned, attrValuesToBeMentioned, availableAttributeActions, MR);
+        return createContentInstanceWithCosts(predicate, costs, previousGeneratedAttrs, attrValuesAlreadyMentioned, attrValuesToBeMentioned, availableAttributeActions, MR);
     }
 
     /**
@@ -3464,22 +3137,21 @@ public class SFX extends DatasetParser {
      * @param MR
      * @return
      */
-    public Instance createAttrInstanceWithCosts(String predicate, TObjectDoubleHashMap<String> costs, ArrayList<String> previousGeneratedAttrs, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesToBeMentioned, HashMap<String, HashSet<String>> availableAttributeActions, MeaningRepresentation MR) {
+    @Override
+    public Instance createContentInstanceWithCosts(String predicate, TObjectDoubleHashMap<String> costs, ArrayList<String> previousGeneratedAttrs, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesToBeMentioned, HashMap<String, HashSet<String>> availableAttributeActions, MeaningRepresentation MR) {
         TObjectDoubleHashMap<String> generalFeatures = new TObjectDoubleHashMap<>();
         HashMap<String, TObjectDoubleHashMap<String>> valueSpecificFeatures = new HashMap<>();
         if (availableAttributeActions.containsKey(predicate)) {
-            for (String action : availableAttributeActions.get(predicate)) {
+            availableAttributeActions.get(predicate).forEach((action) -> {
                 valueSpecificFeatures.put(action, new TObjectDoubleHashMap<String>());
-            }
+            });
         }
 
         ArrayList<String> mentionedAttrValues = new ArrayList<>();
-        for (String attrValue : previousGeneratedAttrs) {
-            if (!attrValue.equals(Action.TOKEN_START)
-                    && !attrValue.equals(Action.TOKEN_END)) {
-                mentionedAttrValues.add(attrValue);
-            }
-        }
+        previousGeneratedAttrs.stream().filter((attrValue) -> (!attrValue.equals(Action.TOKEN_START)
+                && !attrValue.equals(Action.TOKEN_END))).forEachOrdered((attrValue) -> {
+            mentionedAttrValues.add(attrValue);
+        });
 
         for (int j = 1; j <= 1; j++) {
             String previousAttrValue = "@@";
@@ -3524,19 +3196,18 @@ public class SFX extends DatasetParser {
             generalFeatures.put("feature_attrValue_allreadyMentioned_" + mentionedAttrValues.get(i), 1.0);
         }
         //If arguments should still be generated or not
-        for (String attrValue : attrValuesToBeMentioned) {
+        attrValuesToBeMentioned.forEach((attrValue) -> {
             generalFeatures.put("feature_attrValue_toBeMentioned_" + attrValue, 1.0);
-        }
-        //Which attrs are in the MR and which are not
+        }); //Which attrs are in the MR and which are not
 
         if (availableAttributeActions.containsKey(predicate)) {
-            for (String attribute : availableAttributeActions.get(predicate)) {
+            availableAttributeActions.get(predicate).forEach((attribute) -> {
                 if (MR.getAttributes().keySet().contains(attribute)) {
                     generalFeatures.put("feature_attr_inMR_" + attribute, 1.0);
                 } else {
                     generalFeatures.put("feature_attr_notInMR_" + attribute, 1.0);
                 }
-            }
+            });
         }
 
         ArrayList<String> mentionedAttrs = new ArrayList<>();
@@ -3548,13 +3219,15 @@ public class SFX extends DatasetParser {
             mentionedAttrs.add(attr);
         }
         HashSet<String> attrsToBeMentioned = new HashSet<>();
-        for (String attrValue : attrValuesToBeMentioned) {
+        attrValuesToBeMentioned.stream().map((attrValue) -> {
             String attr = attrValue;
             if (attr.contains("=")) {
                 attr = attrValue.substring(0, attrValue.indexOf('='));
             }
+            return attr;
+        }).forEachOrdered((attr) -> {
             attrsToBeMentioned.add(attr);
-        }
+        });
 
         for (int j = 1; j <= 1; j++) {
             String previousAttr = "";
@@ -3600,13 +3273,13 @@ public class SFX extends DatasetParser {
         generalFeatures.put("feature_attr_5gram_" + prev5gramAttr, 1.0);
 
         //If arguments have been generated or not
-        for (String attr : attrValuesAlreadyMentioned) {
+        attrValuesAlreadyMentioned.forEach((attr) -> {
             generalFeatures.put("feature_attr_alreadyMentioned_" + attr, 1.0);
-        }
+        });
         //If arguments should still be generated or not
-        for (String attr : attrsToBeMentioned) {
+        attrsToBeMentioned.forEach((attr) -> {
             generalFeatures.put("feature_attr_toBeMentioned_" + attr, 1.0);
-        }
+        });
 
         //Attr specific features (and global features)
         if (availableAttributeActions.containsKey(predicate)) {
@@ -3631,14 +3304,13 @@ public class SFX extends DatasetParser {
                         valueSpecificFeatures.get(action).put("global_feature_specific_attrNotFollowingSameAttr", 1.0);
                     }
                     //Is attr already mentioned
-                    for (String attrValue : attrValuesAlreadyMentioned) {
+                    attrValuesAlreadyMentioned.stream().map((attrValue) -> {
                         if (attrValue.indexOf('=') == -1) {
-                            System.out.println("!!!!!!!!!!!! " + attrValuesAlreadyMentioned + " " + costs);
                         }
-                        if (attrValue.substring(0, attrValue.indexOf('=')).equals(action)) {
-                            valueSpecificFeatures.get(action).put("global_feature_specific_attrAlreadyMentioned", 1.0);
-                        }
-                    }
+                        return attrValue;
+                    }).filter((attrValue) -> (attrValue.substring(0, attrValue.indexOf('=')).equals(action))).forEachOrdered((_item) -> {
+                        valueSpecificFeatures.get(action).put("global_feature_specific_attrAlreadyMentioned", 1.0);
+                    });
                     //Is attr to be mentioned (has value to express)
                     boolean toBeMentioned = false;
                     for (String attrValue : attrValuesToBeMentioned) {
@@ -3652,46 +3324,42 @@ public class SFX extends DatasetParser {
                     }
                 }
                 HashSet<String> keys = new HashSet<>(valueSpecificFeatures.get(action).keySet());
-                for (String feature1 : keys) {
-                    for (String feature2 : keys) {
-                        if (valueSpecificFeatures.get(action).get(feature1) == 1.0
-                                && valueSpecificFeatures.get(action).get(feature2) == 1.0
-                                && feature1.compareTo(feature2) < 0) {
-                            valueSpecificFeatures.get(action).put(feature1 + "&&" + feature2, 1.0);
-                        }
-                    }
-                }
+                keys.forEach((feature1) -> {
+                    keys.stream().filter((feature2) -> (valueSpecificFeatures.get(action).get(feature1) == 1.0
+                            && valueSpecificFeatures.get(action).get(feature2) == 1.0
+                            && feature1.compareTo(feature2) < 0)).forEachOrdered((feature2) -> {
+                        valueSpecificFeatures.get(action).put(feature1 + "&&" + feature2, 1.0);
+                    });
+                });
 
-                if (useLMs) {
-                    String nextValue = chooseNextValue(action, attrValuesToBeMentioned);
-                    if (nextValue.isEmpty() && !action.equals(Action.TOKEN_END)) {
-                        valueSpecificFeatures.get(action).put("global_feature_LMAttr_score", 0.0);
+                String nextValue = chooseNextValue(action, attrValuesToBeMentioned);
+                if (nextValue.isEmpty() && !action.equals(Action.TOKEN_END)) {
+                    valueSpecificFeatures.get(action).put("global_feature_LMAttr_score", 0.0);
+                } else {
+                    ArrayList<String> fullGramLM = new ArrayList<>();
+                    for (int i = 0; i < mentionedAttrValues.size(); i++) {
+                        fullGramLM.add(mentionedAttrValues.get(i));
+                    }
+                    ArrayList<String> prev5attrValueGramLM = new ArrayList<>();
+                    int j = 0;
+                    for (int i = mentionedAttrValues.size() - 1; (i >= 0 && j < 5); i--) {
+                        prev5attrValueGramLM.add(0, mentionedAttrValues.get(i));
+                        j++;
+                    }
+                    if (!action.equals(Action.TOKEN_END)) {
+                        prev5attrValueGramLM.add(action + "=" + chooseNextValue(action, attrValuesToBeMentioned));
                     } else {
-                        ArrayList<String> fullGramLM = new ArrayList<>();
-                        for (int i = 0; i < mentionedAttrValues.size(); i++) {
-                            fullGramLM.add(mentionedAttrValues.get(i));
-                        }
-                        ArrayList<String> prev5attrValueGramLM = new ArrayList<>();
-                        int j = 0;
-                        for (int i = mentionedAttrValues.size() - 1; (i >= 0 && j < 5); i--) {
-                            prev5attrValueGramLM.add(0, mentionedAttrValues.get(i));
-                            j++;
-                        }
-                        if (!action.equals(Action.TOKEN_END)) {
-                            prev5attrValueGramLM.add(action + "=" + chooseNextValue(action, attrValuesToBeMentioned));
-                        } else {
-                            prev5attrValueGramLM.add(action);
-                        }
-                        while (prev5attrValueGramLM.size() < 4) {
-                            prev5attrValueGramLM.add(0, "@@");
-                        }
-
-                        double afterLMScore = attrLMsPerPredicate.get(predicate).getProbability(prev5attrValueGramLM);
-                        valueSpecificFeatures.get(action).put("global_feature_LMAttr_score", afterLMScore);
-
-                        afterLMScore = attrLMsPerPredicate.get(predicate).getProbability(fullGramLM);
-                        valueSpecificFeatures.get(action).put("global_feature_LMAttrFull_score", afterLMScore);
+                        prev5attrValueGramLM.add(action);
                     }
+                    while (prev5attrValueGramLM.size() < 4) {
+                        prev5attrValueGramLM.add(0, "@@");
+                    }
+
+                    double afterLMScore = getContentLMsPerPredicate().get(predicate).getProbability(prev5attrValueGramLM);
+                    valueSpecificFeatures.get(action).put("global_feature_LMAttr_score", afterLMScore);
+
+                    afterLMScore = getContentLMsPerPredicate().get(predicate).getProbability(fullGramLM);
+                    valueSpecificFeatures.get(action).put("global_feature_LMAttrFull_score", afterLMScore);
                 }
             }
         }
@@ -3711,6 +3379,7 @@ public class SFX extends DatasetParser {
      * @param availableWordActions
      * @return
      */
+    @Override
     public Instance createWordInstance(String predicate, Action bestAction, ArrayList<String> previousGeneratedAttributes, ArrayList<Action> previousGeneratedWords, ArrayList<String> nextGeneratedAttributes, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesThatFollow, boolean wasValueMentioned, HashMap<String, HashSet<Action>> availableWordActions) {
         TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
         if (!bestAction.getWord().trim().isEmpty()) {
@@ -3750,6 +3419,7 @@ public class SFX extends DatasetParser {
      * @param availableWordActions
      * @return
      */
+    @Override
     public Instance createWordInstanceWithCosts(String predicate, String currentAttrValue, TObjectDoubleHashMap<String> costs, ArrayList<String> generatedAttributes, ArrayList<Action> previousGeneratedWords, ArrayList<String> nextGeneratedAttributes, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesThatFollow, boolean wasValueMentioned, HashMap<String, HashSet<Action>> availableWordActions) {
         String currentAttr = currentAttrValue;
         String currentValue = "";
@@ -4348,8 +4018,10 @@ public class SFX extends DatasetParser {
             //generalFeatures.put("feature_wasValueMentioned_false", 1.0);
         }
         HashSet<String> valuesThatFollow = new HashSet<>();
-        for (String attrValue : attrValuesThatFollow) {
+        attrValuesThatFollow.stream().map((attrValue) -> {
             generalFeatures.put("feature_attrValuesThatFollow_" + attrValue.toLowerCase(), 1.0);
+            return attrValue;
+        }).forEachOrdered((attrValue) -> {
             if (attrValue.contains("=")) {
                 String v = attrValue.substring(attrValue.indexOf('=') + 1);
                 if (v.matches("[xX][0-9]+")) {
@@ -4362,15 +4034,17 @@ public class SFX extends DatasetParser {
             } else {
                 generalFeatures.put("feature_attrsThatFollow_" + attrValue.toLowerCase(), 1.0);
             }
-        }
+        });
         if (valuesThatFollow.isEmpty()) {
             generalFeatures.put("feature_noAttrsFollow", 1.0);
         } else {
             generalFeatures.put("feature_noAttrsFollow", 0.0);
         }
         HashSet<String> mentionedValues = new HashSet<>();
-        for (String attrValue : attrValuesAlreadyMentioned) {
+        attrValuesAlreadyMentioned.stream().map((attrValue) -> {
             generalFeatures.put("feature_attrValuesAlreadyMentioned_" + attrValue.toLowerCase(), 1.0);
+            return attrValue;
+        }).forEachOrdered((attrValue) -> {
             if (attrValue.contains("=")) {
                 generalFeatures.put("feature_attrsAlreadyMentioned_" + attrValue.substring(0, attrValue.indexOf('=')).toLowerCase(), 1.0);
                 String v = attrValue.substring(attrValue.indexOf('=') + 1);
@@ -4383,7 +4057,7 @@ public class SFX extends DatasetParser {
             } else {
                 generalFeatures.put("feature_attrsAlreadyMentioned_" + attrValue.toLowerCase(), 1.0);
             }
-        }
+        });
 
         /*System.out.println("currentAttrValue: " + currentAttrValue);
         System.out.println("5W: " + prev5gram);
@@ -4412,7 +4086,7 @@ public class SFX extends DatasetParser {
                 valueSpecificFeatures.get(action.getAction()).put("global_feature_specific_notSameAsPreviousWord", 1.0);
             }
             //Has word appeared in the same attrValue before
-            for (Action previousAction : generatedWords) {
+            generatedWords.forEach((previousAction) -> {
                 if (previousAction.getWord().equals(action.getWord())
                         && previousAction.getAttribute().equals(currentAttrValue)) {
                     //valueSpecificFeatures.get(action.getAction()).put("feature_specific_appearedInSameAttrValue", 1.0);
@@ -4421,9 +4095,9 @@ public class SFX extends DatasetParser {
                     //valueSpecificFeatures.get(action.getAction()).put("feature_specific_notAppearedInSameAttrValue", 1.0);
                     //valueSpecificFeatures.get(action.getAction()).put("global_feature_specific_notAppearedInSameAttrValue", 1.0);
                 }
-            }
+            });
             //Has word appeared before
-            for (Action previousAction : generatedWords) {
+            generatedWords.forEach((previousAction) -> {
                 if (previousAction.getWord().equals(action.getWord())) {
                     //valueSpecificFeatures.get(action.getAction()).put("feature_specific_appeared", 1.0);
                     valueSpecificFeatures.get(action.getAction()).put("global_feature_specific_appeared", 1.0);
@@ -4431,7 +4105,7 @@ public class SFX extends DatasetParser {
                     //valueSpecificFeatures.get(action.getAction()).put("feature_specific_notAppeared", 1.0);
                     //valueSpecificFeatures.get(action.getAction()).put("global_feature_specific_notAppeared", 1.0);
                 }
-            }
+            });
             if (currentValue.equals("no")
                     || currentValue.equals("yes")
                     || currentValue.equals("yes or no")
@@ -4446,15 +4120,13 @@ public class SFX extends DatasetParser {
             }
 
             HashSet<String> keys = new HashSet<>(valueSpecificFeatures.get(action.getAction()).keySet());
-            for (String feature1 : keys) {
-                for (String feature2 : keys) {
-                    if (valueSpecificFeatures.get(action.getAction()).get(feature1) == 1.0
-                            && valueSpecificFeatures.get(action.getAction()).get(feature2) == 1.0
-                            && feature1.compareTo(feature2) < 0) {
-                        valueSpecificFeatures.get(action.getAction()).put(feature1 + "&&" + feature2, 1.0);
-                    }
-                }
-            }
+            keys.forEach((feature1) -> {
+                keys.stream().filter((feature2) -> (valueSpecificFeatures.get(action.getAction()).get(feature1) == 1.0
+                        && valueSpecificFeatures.get(action.getAction()).get(feature2) == 1.0
+                        && feature1.compareTo(feature2) < 0)).forEachOrdered((feature2) -> {
+                    valueSpecificFeatures.get(action.getAction()).put(feature1 + "&&" + feature2, 1.0);
+                });
+            });
 
             if (!action.getWord().startsWith(Action.TOKEN_X)
                     && !currentValue.equals("no")
@@ -4463,8 +4135,8 @@ public class SFX extends DatasetParser {
                     && !currentValue.equals("none")
                     && !currentValue.equals("empty") //&& !currentValue.equals("dont_care")
                     ) {
-                for (String value : valueAlignments.keySet()) {
-                    for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
+                for (String value : getValueAlignments().keySet()) {
+                    for (ArrayList<String> alignedStr : getValueAlignments().get(value).keySet()) {
                         if (alignedStr.get(0).equals(action.getWord())) {
                             if (mentionedValues.contains(value)) {
                                 //valueSpecificFeatures.get(action.getAction()).put("feature_specific_beginsValue_alreadyMentioned", 1.0);
@@ -4535,8 +4207,8 @@ public class SFX extends DatasetParser {
                     // if (!prevCurrentAttrValueWord.equals("@@")) {
                     if (!prevWord.equals("@@")) {
                         boolean alignmentIsOpen = false;
-                        for (String value : valueAlignments.keySet()) {
-                            for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
+                        for (String value : getValueAlignments().keySet()) {
+                            for (ArrayList<String> alignedStr : getValueAlignments().get(value).keySet()) {
                                 for (int i = 0; i < alignedStr.size() - 1; i++) {
                                     if (alignedStr.get(i).equals(prevWord)
                                             && endsWith(generatedPhrase, new ArrayList<>(alignedStr.subList(0, i + 1)))) {
@@ -4613,34 +4285,28 @@ public class SFX extends DatasetParser {
 
             //valueSpecificFeatures.get(action.getAction()).put("global_feature_abstractMR_" + mr.getAbstractMR(), 1.0);
             valueSpecificFeatures.get(action.getAction()).put("global_feature_currentValue_" + currentValue.toLowerCase(), 1.0);
-            if (useLMs) {
-                ArrayList<String> fullGramLM = new ArrayList<>();
-                for (int i = 0; i < generatedWords.size(); i++) {
-                    fullGramLM.add(generatedWords.get(i).getWord());
-                }
 
-                ArrayList<String> prev5wordGramLM = new ArrayList<>();
-                int j = 0;
-                for (int i = generatedWords.size() - 1; (i >= 0 && j < 5); i--) {
-                    prev5wordGramLM.add(0, generatedWords.get(i).getWord());
-                    j++;
-                }
-                prev5wordGramLM.add(action.getWord());
-                while (prev5wordGramLM.size() < 4) {
-                    prev5wordGramLM.add(0, "@@");
-                }
-
-                double afterLMScorePerPred5Gram = wordLMsPerPredicate.get(predicate).getProbability(prev5wordGramLM);
-                valueSpecificFeatures.get(action.getAction()).put("global_feature_LMWord_perPredicate_5gram_score", afterLMScorePerPred5Gram);
-
-                //double afterLMScore5Gram = wordLM.getProbability(prev5wordGramLM);
-                //valueSpecificFeatures.get(action.getAction()).put("global_feature_LMWord_5gram_score", afterLMScore5Gram);
-                double afterLMScorePerPred = wordLMsPerPredicate.get(predicate).getProbability(fullGramLM);
-                valueSpecificFeatures.get(action.getAction()).put("global_feature_LMWord_perPredicate_score", afterLMScorePerPred);
-
-                //double afterLMScore = wordLM.getProbability(fullGramLM);
-                //valueSpecificFeatures.get(action.getAction()).put("global_feature_LMWord_score", afterLMScore);
+            ArrayList<String> fullGramLM = new ArrayList<>();
+            for (int i = 0; i < generatedWords.size(); i++) {
+                fullGramLM.add(generatedWords.get(i).getWord());
             }
+
+            ArrayList<String> prev5wordGramLM = new ArrayList<>();
+            int j = 0;
+            for (int i = generatedWords.size() - 1; (i >= 0 && j < 5); i--) {
+                prev5wordGramLM.add(0, generatedWords.get(i).getWord());
+                j++;
+            }
+            prev5wordGramLM.add(action.getWord());
+            while (prev5wordGramLM.size() < 4) {
+                prev5wordGramLM.add(0, "@@");
+            }
+
+            double afterLMScorePerPred5Gram = getWordLMsPerPredicate().get(predicate).getProbability(prev5wordGramLM);
+            valueSpecificFeatures.get(action.getAction()).put("global_feature_LMWord_perPredicate_5gram_score", afterLMScorePerPred5Gram);
+
+            double afterLMScorePerPred = getWordLMsPerPredicate().get(predicate).getProbability(fullGramLM);
+            valueSpecificFeatures.get(action.getAction()).put("global_feature_LMWord_perPredicate_score", afterLMScorePerPred);
         }
 
         /*HashSet<String> keys = new HashSet<>(generalFeatures.keySet());
@@ -4670,19 +4336,20 @@ public class SFX extends DatasetParser {
      * @param wordSequence
      * @return
      */
+    @Override
     public String postProcessWordSequence(DatasetInstance di, ArrayList<Action> wordSequence) {
         HashSet<ArrayList<Action>> matched = new HashSet<>();
         ArrayList<Action> processedWordSequence = new ArrayList<>();
-        for (Action act : wordSequence) {
+        wordSequence.forEach((act) -> {
             processedWordSequence.add(new Action(act));
-        }
+        });
         if (!processedWordSequence.isEmpty()
                 && processedWordSequence.get(processedWordSequence.size() - 1).getWord().equals(Action.TOKEN_END)
                 && processedWordSequence.get(processedWordSequence.size() - 1).getAttribute().equals(Action.TOKEN_END)) {
             processedWordSequence.remove(processedWordSequence.size() - 1);
         }
-        if (punctuationPatterns.containsKey(di.getMeaningRepresentation().getPredicate())) {
-            for (ArrayList<Action> surrounds : punctuationPatterns.get(di.getMeaningRepresentation().getPredicate()).keySet()) {
+        if (getPunctuationPatterns().containsKey(di.getMeaningRepresentation().getPredicate())) {
+            getPunctuationPatterns().get(di.getMeaningRepresentation().getPredicate()).keySet().forEach((surrounds) -> {
                 int beforeNulls = 0;
                 if (surrounds.get(0) == null) {
                     beforeNulls++;
@@ -4716,10 +4383,10 @@ public class SFX extends DatasetParser {
                     }
                     if (matches && m > 0) {
                         matched.add(surrounds);
-                        processedWordSequence.add(i + 2, punctuationPatterns.get(di.getMeaningRepresentation().getPredicate()).get(surrounds));
+                        processedWordSequence.add(i + 2, getPunctuationPatterns().get(di.getMeaningRepresentation().getPredicate()).get(surrounds));
                     }
                 }
-            }
+            });
         }
         boolean isLastPunct = true;
         if (processedWordSequence.contains(new Action("and", ""))) {
@@ -4739,12 +4406,10 @@ public class SFX extends DatasetParser {
         }
 
         ArrayList<Action> cleanActionList = new ArrayList<>();
-        for (Action action : processedWordSequence) {
-            if (!action.getWord().equals(Action.TOKEN_START)
-                    && !action.getWord().equals(Action.TOKEN_END)) {
-                cleanActionList.add(action);
-            }
-        }
+        processedWordSequence.stream().filter((action) -> (!action.getWord().equals(Action.TOKEN_START)
+                && !action.getWord().equals(Action.TOKEN_END))).forEachOrdered((action) -> {
+            cleanActionList.add(action);
+        });
 
         String predictedWordSequence = " ";
         boolean previousIsTokenX = false;
@@ -4790,25 +4455,25 @@ public class SFX extends DatasetParser {
         if (predictedWordSequence.startsWith(",")) {
             System.out.println(wordSequence);
             System.out.println(matched);
-            System.out.println(predictedWordSequence);
         }
         return predictedWordSequence;
     }
 
     /**
      *
-     * @param di
+     * @param mr
      * @param refSeq
      * @return
      */
-    public String postProcessRef(DatasetInstance di, ArrayList<Action> refSeq) {
+    @Override
+    public String postProcessRef(MeaningRepresentation mr, ArrayList<Action> refSeq) {
         String cleanedWords = "";
         boolean previousIsTokenX = false;
         for (Action nlWord : refSeq) {
             if (!nlWord.equals(new Action(Action.TOKEN_START, ""))
                     && !nlWord.equals(new Action(Action.TOKEN_END, ""))) {
                 if (nlWord.getWord().startsWith(Action.TOKEN_X)) {
-                    cleanedWords += " " + di.getMeaningRepresentation().getDelexMap().get(nlWord.getWord());
+                    cleanedWords += " " + mr.getDelexMap().get(nlWord.getWord());
                     previousIsTokenX = true;
                 } else {
                     if (nlWord.getWord().equals("-ly") && previousIsTokenX) {
@@ -4823,7 +4488,7 @@ public class SFX extends DatasetParser {
             }
         }
         cleanedWords = cleanedWords.trim();
-        if (di.getMeaningRepresentation().getPredicate().startsWith("?")
+        if (mr.getPredicate().startsWith("?")
                 && !cleanedWords.endsWith("?")
                 && !cleanedWords.endsWith(".")) {
             cleanedWords = cleanedWords.trim() + "?";
@@ -4845,21 +4510,19 @@ public class SFX extends DatasetParser {
      */
     public ArrayList<String> getPredictedAttrList(ArrayList<Action> wordSequence) {
         ArrayList<Action> cleanActionList = new ArrayList<>();
-        for (Action action : wordSequence) {
-            if (!action.getWord().equals(Action.TOKEN_START)
-                    && !action.getWord().equals(Action.TOKEN_END)) {
-                cleanActionList.add(action);
-            }
-        }
+        wordSequence.stream().filter((action) -> (!action.getWord().equals(Action.TOKEN_START)
+                && !action.getWord().equals(Action.TOKEN_END))).forEachOrdered((action) -> {
+            cleanActionList.add(action);
+        });
 
         ArrayList<String> predictedAttrList = new ArrayList<>();
-        for (Action action : cleanActionList) {
+        cleanActionList.forEach((action) -> {
             if (predictedAttrList.isEmpty()) {
                 predictedAttrList.add(action.getAttribute());
             } else if (!predictedAttrList.get(predictedAttrList.size() - 1).equals(action.getAttribute())) {
                 predictedAttrList.add(action.getAttribute());
             }
-        }
+        });
         return predictedAttrList;
     }
 
@@ -4868,12 +4531,12 @@ public class SFX extends DatasetParser {
      * @return
      */
     public boolean loadLists() {
-        String file1 = "predicates_SF_" + dataset;
-        String file2 = "attributes_SF_" + dataset;
-        String file3 = "attributeValuePairs_SF_" + dataset;
-        String file4 = "valueAlignments_SF_" + dataset;
-        String file5 = "datasetInstances_SF_" + dataset;
-        String file6 = "maxLengths_SF_" + dataset;
+        String file1 = "getPredicates()_SF_" + getDataset();
+        String file2 = "attributes_SF_" + getDataset();
+        String file3 = "attributeValuePairs_SF_" + getDataset();
+        String file4 = "getValueAlignments()_SF_" + getDataset();
+        String file5 = "getDatasetInstances()_SF_" + getDataset();
+        String file6 = "maxLengths_SF_" + getDataset();
         FileInputStream fin1 = null;
         ObjectInputStream ois1 = null;
         FileInputStream fin2 = null;
@@ -4897,79 +4560,75 @@ public class SFX extends DatasetParser {
                 fin1 = new FileInputStream(file1);
                 ois1 = new ObjectInputStream(fin1);
                 Object o1 = ois1.readObject();
-                if (predicates == null) {
+                if (getPredicates() == null) {
                     if (o1 instanceof ArrayList) {
-                        predicates = new ArrayList<String>((ArrayList<String>) o1);
+                        setPredicates(new ArrayList<String>((Collection<? extends String>) o1));
                     }
                 } else if (o1 instanceof ArrayList) {
-                    predicates.addAll((ArrayList<String>) o1);
+                    getPredicates().addAll((Collection<? extends String>) o1);
                 }
                 ///////////////////
                 fin2 = new FileInputStream(file2);
                 ois2 = new ObjectInputStream(fin2);
                 Object o2 = ois2.readObject();
-                if (attributes == null) {
+                if (getAttributes() == null) {
                     if (o2 instanceof HashMap) {
-                        attributes = new HashMap<String, HashSet<String>>((HashMap<String, HashSet<String>>) o2);
+                        setAttributes(new HashMap<String, HashSet<String>>((Map<? extends String, ? extends HashSet<String>>) o2));
                     }
                 } else if (o2 instanceof HashMap) {
-                    attributes.putAll((HashMap<String, HashSet<String>>) o2);
+                    getAttributes().putAll((Map<? extends String, ? extends HashSet<String>>) o2);
                 }
                 ///////////////////
                 fin3 = new FileInputStream(file3);
                 ois3 = new ObjectInputStream(fin3);
                 Object o3 = ois3.readObject();
-                if (attributeValuePairs == null) {
+                if (getAttributeValuePairs() == null) {
                     if (o3 instanceof HashMap) {
-                        attributeValuePairs = new HashMap<String, HashSet<String>>((HashMap<String, HashSet<String>>) o3);
+                        setAttributeValuePairs(new HashMap<String, HashSet<String>>((Map<? extends String, ? extends HashSet<String>>) o3));
                     }
                 } else if (o3 instanceof HashMap) {
-                    attributeValuePairs.putAll((HashMap<String, HashSet<String>>) o3);
+                    getAttributeValuePairs().putAll((Map<? extends String, ? extends HashSet<String>>) o3);
                 }
                 ///////////////////
                 fin4 = new FileInputStream(file4);
                 ois4 = new ObjectInputStream(fin4);
                 Object o4 = ois4.readObject();
-                if (valueAlignments == null) {
+                if (getValueAlignments() == null) {
                     if (o4 instanceof HashMap) {
-                        valueAlignments = new HashMap<String, HashMap<ArrayList<String>, Double>>((HashMap<String, HashMap<ArrayList<String>, Double>>) o4);
+                        setValueAlignments(new HashMap<String, HashMap<ArrayList<String>, Double>>((Map<? extends String, ? extends HashMap<ArrayList<String>, Double>>) o4));
                     }
                 } else if (o4 instanceof HashMap) {
-                    valueAlignments.putAll((HashMap<String, HashMap<ArrayList<String>, Double>>) o4);
+                    getValueAlignments().putAll((Map<? extends String, ? extends HashMap<ArrayList<String>, Double>>) o4);
                 }
                 ///////////////////
                 fin5 = new FileInputStream(file5);
                 ois5 = new ObjectInputStream(fin5);
                 Object o5 = ois5.readObject();
-                if (datasetInstances == null) {
+                if (getDatasetInstances() == null) {
                     if (o5 instanceof HashMap) {
-                        datasetInstances = new HashMap<String, ArrayList<DatasetInstance>>((HashMap<String, ArrayList<DatasetInstance>>) o5);
+                        setDatasetInstances(new HashMap<String, ArrayList<DatasetInstance>>((Map<? extends String, ? extends ArrayList<DatasetInstance>>) o5));
                     }
                 } else if (o5 instanceof HashMap) {
-                    datasetInstances.putAll((HashMap<String, ArrayList<DatasetInstance>>) o5);
+                    getDatasetInstances().putAll((Map<? extends String, ? extends ArrayList<DatasetInstance>>) o5);
                 }
                 ///////////////////
                 fin6 = new FileInputStream(file6);
                 ois6 = new ObjectInputStream(fin6);
                 Object o6 = ois6.readObject();
-                ArrayList<Integer> lengths = new ArrayList<Integer>((ArrayList<Integer>) o6);
-                maxAttrRealizationSize = lengths.get(0);
-                maxWordRealizationSize = lengths.get(1);
+                ArrayList<Integer> lengths = new ArrayList<Integer>((Collection<? extends Integer>) o6);
+                setMaxContentSequenceLength(lengths.get(0));
+                setMaxWordSequenceLength(lengths.get(1));
+
                 System.out.println("done!");
-            } catch (ClassNotFoundException ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (ClassNotFoundException | IOException ex) {
             } finally {
                 try {
                     fin1.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
                 try {
                     ois1.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
             }
             return true;
@@ -4982,12 +4641,12 @@ public class SFX extends DatasetParser {
      *
      */
     public void writeLists() {
-        String file1 = "predicates_SF_" + dataset;
-        String file2 = "attributes_SF_" + dataset;
-        String file3 = "attributeValuePairs_SF_" + dataset;
-        String file4 = "valueAlignments_SF_" + dataset;
-        String file5 = "datasetInstances_SF_" + dataset;
-        String file6 = "maxLengths_SF_" + dataset;
+        String file1 = "getPredicates()_SF_" + getDataset();
+        String file2 = "attributes_SF_" + getDataset();
+        String file3 = "attributeValuePairs_SF_" + getDataset();
+        String file4 = "getValueAlignments()_SF_" + getDataset();
+        String file5 = "getDatasetInstances()_SF_" + getDataset();
+        String file6 = "maxLengths_SF_" + getDataset();
         FileOutputStream fout1 = null;
         ObjectOutputStream oos1 = null;
         FileOutputStream fout2 = null;
@@ -5004,33 +4663,31 @@ public class SFX extends DatasetParser {
             System.out.print("Write lists...");
             fout1 = new FileOutputStream(file1);
             oos1 = new ObjectOutputStream(fout1);
-            oos1.writeObject(predicates);
+            oos1.writeObject(getPredicates());
             ///////////////////
             fout2 = new FileOutputStream(file2);
             oos2 = new ObjectOutputStream(fout2);
-            oos2.writeObject(attributes);
+            oos2.writeObject(getAttributes());
             ///////////////////
             fout3 = new FileOutputStream(file3);
             oos3 = new ObjectOutputStream(fout3);
-            oos3.writeObject(attributeValuePairs);
+            oos3.writeObject(getAttributeValuePairs());
             ///////////////////
             fout4 = new FileOutputStream(file4);
             oos4 = new ObjectOutputStream(fout4);
-            oos4.writeObject(valueAlignments);
+            oos4.writeObject(getValueAlignments());
             ///////////////////
             fout5 = new FileOutputStream(file5);
             oos5 = new ObjectOutputStream(fout5);
-            oos5.writeObject(datasetInstances);
+            oos5.writeObject(getDatasetInstances());
             ///////////////////
             fout6 = new FileOutputStream(file6);
             oos6 = new ObjectOutputStream(fout6);
             ArrayList<Integer> lengths = new ArrayList<Integer>();
-            lengths.add(maxAttrRealizationSize);
-            lengths.add(maxWordRealizationSize);
+            lengths.add(getMaxContentSequenceLength());
+            lengths.add(getMaxWordSequenceLength());
             oos6.writeObject(lengths);
-            System.out.println("done!");
         } catch (IOException ex) {
-            ex.printStackTrace();
         } finally {
             try {
                 fout1.close();
@@ -5040,7 +4697,6 @@ public class SFX extends DatasetParser {
                 fout5.close();
                 fout6.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
             try {
                 oos1.close();
@@ -5050,7 +4706,6 @@ public class SFX extends DatasetParser {
                 oos5.close();
                 oos6.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
         }
     }
@@ -5060,66 +4715,50 @@ public class SFX extends DatasetParser {
      * @return
      */
     public boolean loadLMs() {
-        String file1 = "wordLM_SF_" + dataset;
-        String file2 = "wordLMs_SF_" + dataset;
-        String file3 = "attrLMs_SF_" + dataset;
-        FileInputStream fin1 = null;
-        ObjectInputStream ois1 = null;
+        String file2 = "wordLMs_SF_" + getDataset();
+        String file3 = "attrLMs_SF_" + getDataset();
         FileInputStream fin2 = null;
         ObjectInputStream ois2 = null;
         FileInputStream fin3 = null;
         ObjectInputStream ois3 = null;
-        if ((new File(file1)).exists()
-                && (new File(file2)).exists()
+        if ((new File(file2)).exists()
                 && (new File(file3)).exists()) {
             try {
                 System.out.print("Load language models...");
-                fin1 = new FileInputStream(file1);
-                ois1 = new ObjectInputStream(fin1);
-                Object o1 = ois1.readObject();
-                wordLM = (SimpleLM) o1;
-
+                
                 fin2 = new FileInputStream(file2);
                 ois2 = new ObjectInputStream(fin2);
                 Object o2 = ois2.readObject();
-                if (wordLMsPerPredicate == null) {
+                if (getWordLMsPerPredicate() == null) {
                     if (o2 instanceof HashMap) {
-                        wordLMsPerPredicate = new HashMap<String, SimpleLM>((HashMap<String, SimpleLM>) o2);
+                        setWordLMsPerPredicate(new HashMap<String, SimpleLM>((Map<? extends String, ? extends SimpleLM>) o2));
                     }
                 } else if (o2 instanceof HashMap) {
-                    wordLMsPerPredicate.putAll((HashMap<String, SimpleLM>) o2);
+                    getWordLMsPerPredicate().putAll((Map<? extends String, ? extends SimpleLM>) o2);
                 }
 
                 fin3 = new FileInputStream(file3);
                 ois3 = new ObjectInputStream(fin3);
                 Object o3 = ois3.readObject();
-                if (attrLMsPerPredicate == null) {
+                if (getContentLMsPerPredicate() == null) {
                     if (o3 instanceof HashMap) {
-                        attrLMsPerPredicate = new HashMap<String, SimpleLM>((HashMap<String, SimpleLM>) o3);
+                        setContentLMsPerPredicate(new HashMap<String, SimpleLM>((Map<? extends String, ? extends SimpleLM>) o3));
                     }
                 } else if (o3 instanceof HashMap) {
-                    attrLMsPerPredicate.putAll((HashMap<String, SimpleLM>) o3);
+                    getContentLMsPerPredicate().putAll((Map<? extends String, ? extends SimpleLM>) o3);
                 }
 
-                System.out.println("done!");
-            } catch (ClassNotFoundException ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (ClassNotFoundException | IOException ex) {
             } finally {
                 try {
-                    fin1.close();
                     fin2.close();
                     fin3.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
                 try {
-                    ois1.close();
                     ois2.close();
                     ois3.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
             }
         } else {
@@ -5132,45 +4771,32 @@ public class SFX extends DatasetParser {
      *
      */
     public void writeLMs() {
-        String file1 = "wordLM_SF_" + dataset;
-        String file2 = "wordLMs_SF_" + dataset;
-        String file3 = "attrLMs_SF_" + dataset;
-        FileOutputStream fout1 = null;
-        ObjectOutputStream oos1 = null;
+        String file2 = "wordLMs_SF_" + getDataset();
+        String file3 = "attrLMs_SF_" + getDataset();
         FileOutputStream fout2 = null;
         ObjectOutputStream oos2 = null;
         FileOutputStream fout3 = null;
         ObjectOutputStream oos3 = null;
         try {
             System.out.print("Write LMs...");
-            fout1 = new FileOutputStream(file1);
-            oos1 = new ObjectOutputStream(fout1);
-            oos1.writeObject(wordLM);
-
             fout2 = new FileOutputStream(file2);
             oos2 = new ObjectOutputStream(fout2);
-            oos2.writeObject(wordLMsPerPredicate);
+            oos2.writeObject(getWordLMsPerPredicate());
 
             fout3 = new FileOutputStream(file3);
             oos3 = new ObjectOutputStream(fout3);
-            oos3.writeObject(attrLMsPerPredicate);
-            System.out.println("done!");
+            oos3.writeObject(getContentLMsPerPredicate());
         } catch (IOException ex) {
-            ex.printStackTrace();
         } finally {
             try {
-                fout1.close();
                 fout2.close();
                 fout3.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
             try {
-                oos1.close();
                 oos2.close();
                 oos3.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
         }
     }
@@ -5181,8 +4807,8 @@ public class SFX extends DatasetParser {
      * @return
      */
     public boolean loadTrainingData(int dataSize) {
-        String file1 = "attrTrainingData" + dataset + "_" + useSubsetData + "_" + dataSize;
-        String file2 = "wordTrainingData" + dataset + "_" + useSubsetData + "_" + dataSize;
+        String file1 = "attrTrainingData" + getDataset() + "_" + dataSize;
+        String file2 = "wordTrainingData" + getDataset() + "_" + dataSize;
         FileInputStream fin1 = null;
         ObjectInputStream ois1 = null;
         FileInputStream fin2 = null;
@@ -5194,42 +4820,36 @@ public class SFX extends DatasetParser {
                 fin1 = new FileInputStream(file1);
                 ois1 = new ObjectInputStream(fin1);
                 Object o1 = ois1.readObject();
-                if (predicateAttrTrainingData == null) {
+                if (getPredicateContentTrainingData() == null) {
                     if (o1 instanceof HashMap) {
-                        predicateAttrTrainingData = new HashMap<String, ArrayList<Instance>>((HashMap<String, ArrayList<Instance>>) o1);
+                        setPredicateContentTrainingData(new HashMap<String, ArrayList<Instance>>((Map<? extends String, ? extends ArrayList<Instance>>) o1));
                     }
                 } else if (o1 instanceof HashMap) {
-                    predicateAttrTrainingData.putAll((HashMap<String, ArrayList<Instance>>) o1);
+                    getPredicateContentTrainingData().putAll((Map<? extends String, ? extends ArrayList<Instance>>) o1);
                 }
 
                 fin2 = new FileInputStream(file2);
                 ois2 = new ObjectInputStream(fin2);
                 Object o2 = ois2.readObject();
-                if (predicateWordTrainingData == null) {
+                if (getPredicateWordTrainingData() == null) {
                     if (o2 instanceof HashMap) {
-                        predicateWordTrainingData = new HashMap<String, HashMap<String, ArrayList<Instance>>>((HashMap<String, HashMap<String, ArrayList<Instance>>>) o2);
+                        setPredicateWordTrainingData(new HashMap<String, HashMap<String, ArrayList<Instance>>>((Map<? extends String, ? extends HashMap<String, ArrayList<Instance>>>) o2));
                     }
                 } else if (o2 instanceof HashMap) {
-                    predicateWordTrainingData.putAll((HashMap<String, HashMap<String, ArrayList<Instance>>>) o2);
+                    getPredicateWordTrainingData().putAll((Map<? extends String, ? extends HashMap<String, ArrayList<Instance>>>) o2);
                 }
 
-                System.out.println("done!");
-            } catch (ClassNotFoundException ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (ClassNotFoundException | IOException ex) {
             } finally {
                 try {
                     fin1.close();
                     fin2.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
                 try {
                     ois1.close();
                     ois2.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
             }
         } else {
@@ -5243,8 +4863,8 @@ public class SFX extends DatasetParser {
      * @param dataSize
      */
     public void writeTrainingData(int dataSize) {
-        String file1 = "attrTrainingData" + dataset + "_" + useSubsetData + "_" + dataSize;
-        String file2 = "wordTrainingData" + dataset + "_" + useSubsetData + "_" + dataSize;
+        String file1 = "attrTrainingData" + getDataset() + "_" + dataSize;
+        String file2 = "wordTrainingData" + getDataset() + "_" + dataSize;
         FileOutputStream fout1 = null;
         ObjectOutputStream oos1 = null;
         FileOutputStream fout2 = null;
@@ -5253,27 +4873,23 @@ public class SFX extends DatasetParser {
             System.out.print("Write Training Data...");
             fout1 = new FileOutputStream(file1);
             oos1 = new ObjectOutputStream(fout1);
-            oos1.writeObject(predicateAttrTrainingData);
+            oos1.writeObject(getPredicateContentTrainingData());
 
             fout2 = new FileOutputStream(file2);
             oos2 = new ObjectOutputStream(fout2);
-            oos2.writeObject(predicateWordTrainingData);
+            oos2.writeObject(getPredicateWordTrainingData());
 
-            System.out.println("done!");
         } catch (IOException ex) {
-            ex.printStackTrace();
         } finally {
             try {
                 fout1.close();
                 fout2.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
             try {
                 oos1.close();
                 oos2.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
         }
     }
@@ -5285,9 +4901,10 @@ public class SFX extends DatasetParser {
      * @param trainedWordClassifiers_0
      * @return
      */
+    @Override
     public boolean loadInitClassifiers(int dataSize, HashMap<String, JAROW> trainedAttrClassifiers_0, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0) {
-        String file1 = "attrInitClassifiers" + dataset + "_" + useSubsetData + "_" + dataSize;
-        String file2 = "wordInitClassifiers" + dataset + "_" + useSubsetData + "_" + dataSize;
+        String file1 = "attrInitClassifiers" + getDataset() + "_" + dataSize;
+        String file2 = "wordInitClassifiers" + getDataset() + "_" + dataSize;
         FileInputStream fin1 = null;
         ObjectInputStream ois1 = null;
         FileInputStream fin2 = null;
@@ -5300,33 +4917,27 @@ public class SFX extends DatasetParser {
                 ois1 = new ObjectInputStream(fin1);
                 Object o1 = ois1.readObject();
                 if (o1 instanceof HashMap) {
-                    trainedAttrClassifiers_0.putAll((HashMap<String, JAROW>) o1);
+                    trainedAttrClassifiers_0.putAll((Map<? extends String, ? extends JAROW>) o1);
                 }
 
                 fin2 = new FileInputStream(file2);
                 ois2 = new ObjectInputStream(fin2);
                 Object o2 = ois2.readObject();
                 if (o2 instanceof HashMap) {
-                    trainedWordClassifiers_0.putAll((HashMap<String, HashMap<String, JAROW>>) o2);
+                    trainedWordClassifiers_0.putAll((Map<? extends String, ? extends HashMap<String, JAROW>>) o2);
                 }
 
-                System.out.println("done!");
-            } catch (ClassNotFoundException ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (ClassNotFoundException | IOException ex) {
             } finally {
                 try {
                     fin1.close();
                     fin2.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
                 try {
                     ois1.close();
                     ois2.close();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
                 }
             }
         } else {
@@ -5341,9 +4952,10 @@ public class SFX extends DatasetParser {
      * @param trainedAttrClassifiers_0
      * @param trainedWordClassifiers_0
      */
+    @Override
     public void writeInitClassifiers(int dataSize, HashMap<String, JAROW> trainedAttrClassifiers_0, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0) {
-        String file1 = "attrInitClassifiers" + dataset + "_" + useSubsetData + "_" + dataSize;
-        String file2 = "wordInitClassifiers" + dataset + "_" + useSubsetData + "_" + dataSize;
+        String file1 = "attrInitClassifiers" + getDataset() + "_" + dataSize;
+        String file2 = "wordInitClassifiers" + getDataset() + "_" + dataSize;
         FileOutputStream fout1 = null;
         ObjectOutputStream oos1 = null;
         FileOutputStream fout2 = null;
@@ -5358,53 +4970,50 @@ public class SFX extends DatasetParser {
             oos2 = new ObjectOutputStream(fout2);
             oos2.writeObject(trainedWordClassifiers_0);
 
-            System.out.println("done!");
         } catch (IOException ex) {
-            ex.printStackTrace();
         } finally {
             try {
                 fout1.close();
                 fout2.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
             }
             try {
                 oos1.close();
                 oos2.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
-
             }
         }
     }
+
 }
 
-class createSFXTrainingDatasetThread extends Thread {
-
+/*
+ * Thread that infers the cost and feature vectors for a particular DatasetInstance action sequence
+*/
+class InferSFXVectorsThread extends Thread {
     DatasetInstance di;
     SFX SFX;
-    HashMap<String, HashSet<String>> availableAttributeActions;
-    HashMap<String, HashMap<String, HashSet<Action>>> availableWordActions;
-    ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>> predicateAttrTrainingData;
+    ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>> predicateContentTrainingData;
     ConcurrentHashMap<DatasetInstance, HashMap<String, HashMap<String, ArrayList<Instance>>>> predicateWordTrainingData;
 
-    public createSFXTrainingDatasetThread(DatasetInstance di, SFX SFX, HashMap<String, HashSet<String>> availableAttributeActions, HashMap<String, HashMap<String, HashSet<Action>>> availableWordActions, ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>> predicateAttrTrainingData, ConcurrentHashMap<DatasetInstance, HashMap<String, HashMap<String, ArrayList<Instance>>>> predicateWordTrainingData) {
+    InferSFXVectorsThread(DatasetInstance di, SFX SFX, ConcurrentHashMap<DatasetInstance, HashMap<String, ArrayList<Instance>>> predicateContentTrainingData, ConcurrentHashMap<DatasetInstance, HashMap<String, HashMap<String, ArrayList<Instance>>>> predicateWordTrainingData) {
         this.di = di;
         this.SFX = SFX;
 
-        this.availableAttributeActions = availableAttributeActions;
-        this.availableWordActions = availableWordActions;
-
-        this.predicateAttrTrainingData = predicateAttrTrainingData;
+        this.predicateContentTrainingData = predicateContentTrainingData;
         this.predicateWordTrainingData = predicateWordTrainingData;
-
-        //System.out.println(di.getMeaningRepresentation().MRstr + " " + di.getTrainRealization());
     }
 
+    /**
+     * This method goes through the ActionSequence one time-step at the time, and creates a feature and cost vector for each one.
+     * Meanwhile it tracks the context information that the feature vector requires.
+     */
+    @Override
     public void run() {
-        //System.out.println("BEGIN");
         String predicate = di.getMeaningRepresentation().getPredicate();
-        ArrayList<Action> realization = di.getTrainRealization();
+        ArrayList<Action> refSequence = di.getDirectReferenceSequence();
+        
+        //Collections to track which attribute/value pairs have already be mentioned in the sequence and which are yet to be mentioned
         HashSet<String> attrValuesAlreadyMentioned = new HashSet<>();
         HashSet<String> attrValuesToBeMentioned = new HashSet<>();
         for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
@@ -5416,21 +5025,24 @@ class createSFXTrainingDatasetThread extends Thread {
             attrValuesToBeMentioned.add("empty=empty");
         }
 
+        // First we create the feature and cost vectors for the content actions
         ArrayList<String> attributeSequence = new ArrayList<>();
         String attrValue = "";
-        for (int w = 0; w < realization.size(); w++) {
-            if (!realization.get(w).getAttribute().equals(Action.TOKEN_PUNCT)
-                    && !realization.get(w).getAttribute().equals(attrValue)) {
+        // For every step of the sequence
+        for (int w = 0; w < refSequence.size(); w++) {
+            if (!refSequence.get(w).getAttribute().equals(Action.TOKEN_PUNCT)
+                    && !refSequence.get(w).getAttribute().equals(attrValue)) {
                 if (!attrValue.isEmpty()) {
                     attrValuesToBeMentioned.remove(attrValue);
                 }
-                Instance attrTrainingVector = SFX.createAttrInstance(predicate, realization.get(w).getAttribute(), attributeSequence, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), availableAttributeActions);
-                if (attrTrainingVector != null) {
-                    predicateAttrTrainingData.get(di).get(predicate).add(attrTrainingVector);
+                // Create the feature and cost vector
+                Instance contentTrainingVector = SFX.createContentInstance(predicate, refSequence.get(w).getAttribute(), attributeSequence, attrValuesAlreadyMentioned, attrValuesToBeMentioned, di.getMeaningRepresentation(), SFX.getAvailableContentActions());
+                if (contentTrainingVector != null) {
+                    predicateContentTrainingData.get(di).get(predicate).add(contentTrainingVector);
                 }
-                attributeSequence.add(realization.get(w).getAttribute());
+                attributeSequence.add(refSequence.get(w).getAttribute());
 
-                attrValue = realization.get(w).getAttribute();
+                attrValue = refSequence.get(w).getAttribute();
                 if (!attrValue.isEmpty()) {
                     attrValuesAlreadyMentioned.add(attrValue);
                     attrValuesToBeMentioned.remove(attrValue);
@@ -5438,6 +5050,7 @@ class createSFXTrainingDatasetThread extends Thread {
             }
         }
 
+        // Reset the tracking collections
         attrValuesAlreadyMentioned = new HashSet<>();
         attrValuesToBeMentioned = new HashSet<>();
         for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
@@ -5449,22 +5062,30 @@ class createSFXTrainingDatasetThread extends Thread {
             attrValuesToBeMentioned.add("empty=empty");
         }
 
+        // Then we create the feature and cost vectors for the word actions
+        // Each word action corresponds to a content action, so we need to keep track of which content action we are "generating" from at each timestep
         ArrayList<String> attrs = new ArrayList<>();
         boolean isValueMentioned = false;
+        // The value that we currently need to mention
         String valueTBM = "";
+        // These track the content (attribute/value pairs)
         attrValue = "";
+        // Time-step counter
         int a = -1;
+        // This tracks the subphrase consisting of the words generated for the current content action
         ArrayList<String> subPhrase = new ArrayList<>();
-        for (int w = 0; w < realization.size(); w++) {
-            if (!realization.get(w).getAttribute().equals(Action.TOKEN_PUNCT)) {
-                if (!realization.get(w).getAttribute().equals(attrValue)) {
+        // For every step of the sequence
+        for (int w = 0; w < refSequence.size(); w++) {
+            if (!refSequence.get(w).getAttribute().equals(Action.TOKEN_PUNCT)) {
+                // If this action does not belong to the current content, we need to update the trackers and switch to the new content action
+                if (!refSequence.get(w).getAttribute().equals(attrValue)) {
                     a++;
                     if (!attrValue.isEmpty()) {
                         attrValuesToBeMentioned.remove(attrValue);
                     }
-                    attrs.add(realization.get(w).getAttribute());
+                    attrs.add(refSequence.get(w).getAttribute());
 
-                    attrValue = realization.get(w).getAttribute();
+                    attrValue = refSequence.get(w).getAttribute();
                     subPhrase = new ArrayList<>();
                     isValueMentioned = false;
                     valueTBM = "";
@@ -5476,16 +5097,21 @@ class createSFXTrainingDatasetThread extends Thread {
                     }
                 }
 
+                // If it's not the end of the ActionSequence
                 if (!attrValue.equals(Action.TOKEN_END)) {
+                    // The subsequence of content actions we have generated for so far
                     ArrayList<String> predictedAttributesForInstance = new ArrayList<>();
                     for (int i = 0; i < attrs.size() - 1; i++) {
                         predictedAttributesForInstance.add(attrs.get(i));
                     }
+                    // ...exclusive of the current content action
                     if (!attrs.get(attrs.size() - 1).equals(attrValue)) {
                         predictedAttributesForInstance.add(attrs.get(attrs.size() - 1));
                     }
+                    // The subsequence of content actions we will generated for after the current content action
                     ArrayList<String> nextAttributesForInstance = new ArrayList<>(attributeSequence.subList(a + 1, attributeSequence.size()));
-                    Instance wordTrainingVector = SFX.createWordInstance(predicate, realization.get(w), predictedAttributesForInstance, new ArrayList<>(realization.subList(0, w)), nextAttributesForInstance, attrValuesAlreadyMentioned, attrValuesToBeMentioned, isValueMentioned, availableWordActions.get(predicate));
+                    // Create the feature and cost vector
+                    Instance wordTrainingVector = SFX.createWordInstance(predicate, refSequence.get(w), predictedAttributesForInstance, new ArrayList<>(refSequence.subList(0, w)), nextAttributesForInstance, attrValuesAlreadyMentioned, attrValuesToBeMentioned, isValueMentioned, SFX.getAvailableWordActions().get(predicate));
 
                     if (wordTrainingVector != null) {
                         String attribute = attrValue;
@@ -5499,25 +5125,29 @@ class createSFXTrainingDatasetThread extends Thread {
                             predicateWordTrainingData.get(di).get(predicate).put(attribute, new ArrayList<Instance>());
                         }
                         predicateWordTrainingData.get(di).get(predicate).get(attribute).add(wordTrainingVector);
-                        if (!realization.get(w).getWord().equals(Action.TOKEN_START)
-                                && !realization.get(w).getWord().equals(Action.TOKEN_END)) {
-                            subPhrase.add(realization.get(w).getWord());
+                        if (!refSequence.get(w).getWord().equals(Action.TOKEN_START)
+                                && !refSequence.get(w).getWord().equals(Action.TOKEN_END)) {
+                            subPhrase.add(refSequence.get(w).getWord());
                         }
                     }
+                    
+                    // Check if we have mentioned the value of the current content action
                     if (!isValueMentioned) {
-                        if (realization.get(w).getWord().startsWith(Action.TOKEN_X)
+                        // If the value is a variable, we just check if the word action we just generated is that variable
+                        if (refSequence.get(w).getWord().startsWith(Action.TOKEN_X)
                                 && (valueTBM.matches("[xX][0-9]+") || valueTBM.matches("\"[xX][0-9]+\"")
                                 || valueTBM.startsWith(Action.TOKEN_X))) {
                             isValueMentioned = true;
-                        } else if (!realization.get(w).getWord().startsWith(Action.TOKEN_X)
+                        // Otherwise
+                        } else if (!refSequence.get(w).getWord().startsWith(Action.TOKEN_X)
                                 && !(valueTBM.matches("[xX][0-9]+") || valueTBM.matches("\"[xX][0-9]+\"")
                                 || valueTBM.startsWith(Action.TOKEN_X))) {
+                            // We form the key for the value, as it appears in the valueAlignments collection
                             String valueToCheck = valueTBM;
                             if (valueToCheck.equals("no")
                                     || valueToCheck.equals("yes")
                                     || valueToCheck.equals("yes or no")
                                     || valueToCheck.equals("none")
-                                    //|| valueToCheck.equals("dont_care")
                                     || valueToCheck.equals("empty")) {
                                 String attribute = attrValue;
                                 if (attribute.contains("=")) {
@@ -5525,9 +5155,11 @@ class createSFXTrainingDatasetThread extends Thread {
                                 }
                                 valueToCheck = attribute + ":" + valueTBM;
                             }
+                            // We look up the value in all the value alignments we have made during the parsing of the data, and see if it is mentioned in the subphrase
+                            // Note that the value may be formed by multiple word actions
                             if (!valueToCheck.equals("empty:empty")
-                                    && SFX.valueAlignments.containsKey(valueToCheck)) {
-                                for (ArrayList<String> alignedStr : SFX.valueAlignments.get(valueToCheck).keySet()) {
+                                    && SFX.getValueAlignments().containsKey(valueToCheck)) {
+                                for (ArrayList<String> alignedStr : SFX.getValueAlignments().get(valueToCheck).keySet()) {
                                     if (SFX.endsWith(subPhrase, alignedStr)) {
                                         isValueMentioned = true;
                                         break;
@@ -5540,8 +5172,9 @@ class createSFXTrainingDatasetThread extends Thread {
                             attrValuesToBeMentioned.remove(attrValue);
                         }
                     }
+                    // We also check if we have inadvertedly mentioned some other pending value (not the current one)
                     String mentionedAttrValue = "";
-                    if (!realization.get(w).getWord().startsWith(Action.TOKEN_X)) {
+                    if (!refSequence.get(w).getWord().startsWith(Action.TOKEN_X)) {
                         for (String attrValueTBM : attrValuesToBeMentioned) {
                             if (attrValueTBM.contains("=")) {
                                 String value = attrValueTBM.substring(attrValueTBM.indexOf('=') + 1);
@@ -5553,13 +5186,12 @@ class createSFXTrainingDatasetThread extends Thread {
                                             || valueToCheck.equals("yes")
                                             || valueToCheck.equals("yes or no")
                                             || valueToCheck.equals("none")
-                                            //|| valueToCheck.equals("dont_care")
                                             || valueToCheck.equals("empty")) {
                                         valueToCheck = attrValueTBM.replace("=", ":");
                                     }
                                     if (!valueToCheck.equals("empty:empty")
-                                            && SFX.valueAlignments.containsKey(valueToCheck)) {
-                                        for (ArrayList<String> alignedStr : SFX.valueAlignments.get(valueToCheck).keySet()) {
+                                            && SFX.getValueAlignments().containsKey(valueToCheck)) {
+                                        for (ArrayList<String> alignedStr : SFX.getValueAlignments().get(valueToCheck).keySet()) {
                                             if (SFX.endsWith(subPhrase, alignedStr)) {
                                                 mentionedAttrValue = attrValueTBM;
                                                 break;

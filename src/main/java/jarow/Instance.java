@@ -22,6 +22,7 @@ import gnu.trove.set.hash.THashSet;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.logging.Logger;
 
 // the instances consist of a HashMap of labels to costs and feature vectors (Huang-style)
 /**
@@ -42,27 +43,25 @@ public class Instance implements Serializable {
         TObjectIntHashMap<String> generalFeature2counts = new TObjectIntHashMap<>();
         TObjectIntHashMap<String> valueSpecificFeature2counts = new TObjectIntHashMap<>();
 
-        for (Instance instance : instances) {
-            for (String element : instance.getGeneralFeatureVector().keySet()) {
+        instances.stream().map((instance) -> {
+            instance.getGeneralFeatureVector().keySet().forEach((element) -> {
                 generalFeature2counts.adjustOrPutValue(element, 1, 1);
-            }
-            for (String value : instance.getValueSpecificFeatureVector().keySet()) {
-                for (String element : instance.getValueSpecificFeatureVector().keySet()) {
+            });
+            return instance;
+        }).forEachOrdered((instance) -> {
+            instance.getValueSpecificFeatureVector().keySet().forEach((value) -> {
+                instance.getValueSpecificFeatureVector().keySet().forEach((element) -> {
                     valueSpecificFeature2counts.adjustOrPutValue(value + "=" + element, 1, 1);
-                }
-            }
-        }
-
-        System.out.println("Removing hapax legomena");
+                });
+            });
+        });
         ArrayList<Instance> newInstances = new ArrayList<>();
-        for (Instance instance : instances) {
+        instances.forEach((instance) -> {
             TObjectDoubleHashMap<String> newFeatureVector = new TObjectDoubleHashMap<>();
-            for (String element : instance.getGeneralFeatureVector().keySet()) {
-                // if this feature was encountered more than once
-                if (generalFeature2counts.get(element) > 1) {
-                    newFeatureVector.put(element, instance.getGeneralFeatureVector().get(element));
-                }
-            }
+            // if this feature was encountered more than once
+            instance.getGeneralFeatureVector().keySet().stream().filter((element) -> (generalFeature2counts.get(element) > 1)).forEachOrdered((element) -> {
+                newFeatureVector.put(element, instance.getGeneralFeatureVector().get(element));
+            });
             HashMap<String, TObjectDoubleHashMap<String>> newValueSpecificFeatureVector = null;
             if (instance.getValueSpecificFeatureVector() != null) {
                 newValueSpecificFeatureVector = new HashMap<>();
@@ -79,7 +78,7 @@ public class Instance implements Serializable {
                 }
             }
             newInstances.add(new Instance(newFeatureVector, newValueSpecificFeatureVector, instance.getCosts()));
-        }
+        });
         return newInstances;
     }
 
@@ -120,7 +119,7 @@ public class Instance implements Serializable {
             this.worstLabels = new THashSet<>();
             this.correctLabels = new THashSet<>();
 
-            for (String label : this.costs.keySet()) {
+            this.costs.keySet().forEach((label) -> {
                 Double cost = this.costs.get(label);
 
                 int compare = Double.compare(cost, this.minCost);
@@ -141,13 +140,13 @@ public class Instance implements Serializable {
                 } else if (compare == 0) {
                     this.worstLabels.add(label);
                 }
-            }
+            });
 
             int compare = Double.compare(this.minCost, 0.0);
             if (compare > 0) {
-                for (String label : this.costs.keySet()) {
+                this.costs.keySet().forEach((label) -> {
                     this.costs.adjustValue(label, -this.minCost);
-                }
+                });
                 this.maxCost -= this.minCost;
             }
         }
@@ -254,4 +253,5 @@ public class Instance implements Serializable {
     public THashSet<String> getCorrectLabels() {
         return correctLabels;
     }
+    private static final Logger LOG = Logger.getLogger(Instance.class.getName());
 }

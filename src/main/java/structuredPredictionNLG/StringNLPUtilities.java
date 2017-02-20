@@ -14,329 +14,87 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package imitationNLG;
+package structuredPredictionNLG;
 
 import java.util.ArrayList;
 
 /**
- *
+ * A collection of static methods pertaining closed set dictionaries. 
  * @author Gerasimos Lampouras
+ * @organization University of Sheffield
  */
 public class StringNLPUtilities {
 
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ABOARD = "aboard";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ABOUT = "about";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ABOVE = "above";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ACROSS = "across";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_AFTER = "after";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_AGAINST = "against";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ALONG = "along";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_AMID = "amid";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_AMONG = "among";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ANTI = "anti";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_AROUND = "around";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_AS = "as";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_AT = "at";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BEFORE = "before";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BEHIND = "behind";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BELOW = "below";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BENEATH = "beneath";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BESIDE = "beside";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BETWEEN = "between";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BEYOND = "beyond";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BUT = "but";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_BY = "by";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_DESPITE = "despite";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_DOWN = "down";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_DURING = "during";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_EXCEPT = "except";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_FOR = "for";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_FROM = "from";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_IN = "in";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_INSIDE = "inside";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_INTO = "into";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_LIKE = "like";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_MINUS = "minus";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_NEAR = "near";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_OF = "of";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_OFF = "off";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ON = "on";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ONTO = "onto";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_OPPOSITE = "opposite";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_OUTSIDE = "outside";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_OVER = "over";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_PAST = "past";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_PER = "per";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_PLUS = "plus";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_ROUND = "round";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_SAVE = "save";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_SINCE = "since";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_THAN = "than";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_THROUGH = "through";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_TO = "to";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_TOWARD = "toward";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_TOWARDS = "towards";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_UNDER = "under";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_UNLIKE = "unlike";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_UNTIL = "until";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_UP = "up";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_UPON = "upon";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_VIA = "via";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_WITH = "with";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_WITHIN = "within";
-
-    /**
-     *
-     */
     public static final String PREPOSITION_EN_WITHOUT = "without";
 
     /**
-     *
+     * A dictionary of all English prepositions.
      */
     public static ArrayList<String> prepositionList = null;
 
     /**
-     *
-     * @return
+     * Return (and constructs when first called) a dictionary of all English prepositions.
+     * @return  A dictionary of all English prepositions.
      */
     public static ArrayList<String> getEnglishPrepositionList() {
         if (prepositionList == null) {
@@ -409,26 +167,20 @@ public class StringNLPUtilities {
     }
 
     /**
-     *
-     * @param s
-     * @return
+     * Checks whether a word is an article.
+     * @param s The word to check.
+     * @return true if the word is an article, false otherwise.
      */
     public static boolean isArticle(String s) {
-        if (s.equals("the") || s.equals("a") || s.equals("an")) {
-            return true;
-        }
-        return false;
+        return s.equals("the") || s.equals("a") || s.equals("an");
     }
 
     /**
-     *
-     * @param s
-     * @return
+     * Checks whether a word is a preposition.
+     * @param s The word to check.
+     * @return true if the word is a preposition, false otherwise.
      */
     public static boolean isPreposition(String s) {
-        if (getEnglishPrepositionList().contains(s)) {
-            return true;
-        }
-        return false;
+        return getEnglishPrepositionList().contains(s);
     }
 }

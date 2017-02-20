@@ -23,8 +23,8 @@ import edu.stanford.nlp.mt.util.IString;
 import edu.stanford.nlp.mt.util.IStrings;
 import edu.stanford.nlp.mt.util.ScoredFeaturizedTranslation;
 import edu.stanford.nlp.mt.util.Sequence;
-import imitationNLG.Action;
-import imitationNLG.Bagel;
+import structuredPredictionNLG.Action;
+import structuredPredictionNLG.Bagel;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -141,7 +141,7 @@ public class ParseResultFiles {
         HashSet<String> unreliableUserIDs = new HashSet<>();
         HashSet<String> unreliableUserIDsFL = new HashSet<>();
         HashSet<String> unreliableUserIDsAD = new HashSet<>();
-        for (String userID : scoresPerUser.keySet()) {
+        scoresPerUser.keySet().forEach((userID) -> {
             if (scoresPerUser.get(userID).get("Fluency").get("CONTROL-Worse") < scoresPerUser.get(userID).get("Fluency").get("CONTROL-Med")
                     && scoresPerUser.get(userID).get("Fluency").get("CONTROL-Worse") < scoresPerUser.get(userID).get("Fluency").get("CONTROL-Best")
                     && scoresPerUser.get(userID).get("Fluency").get("CONTROL-Med") <= scoresPerUser.get(userID).get("Fluency").get("CONTROL-Best")
@@ -167,29 +167,25 @@ public class ParseResultFiles {
                     unreliableUserIDsAD.add(userID);
                 }
             }
-        }
+        });
 
         ArrayList<String> instanceIDs = new ArrayList<>();
-        for (String userID : scoresPerUser.keySet()) {
-            for (String instance : scoresPerUser.get(userID).get("Fluency").keySet()) {
-                if (!instance.contains("CONTROL-Worse")
-                        && !instance.contains("CONTROL-Med")
-                        && !instance.contains("CONTROL-Best")) {
-                    if (!instanceIDs.contains(instance)) {
+        scoresPerUser.keySet().forEach((userID) -> {
+            scoresPerUser.get(userID).get("Fluency").keySet().stream().filter((instance) -> (!instance.contains("CONTROL-Worse")
+                    && !instance.contains("CONTROL-Med")
+                    && !instance.contains("CONTROL-Best"))).filter((instance) -> (!instanceIDs.contains(instance))).forEachOrdered((instance) -> {
                         instanceIDs.add(instance);
-                    }
-                }
-            }
-        }
+            });
+        });
         Collections.sort(instanceIDs);
 
         System.out.println("PARTICIPATING users: " + scoresPerUser.keySet().size());
-        System.out.println("UNRELIABLE: " + (((double) unreliableUserIDs.size()) / ((double) scoresPerUser.keySet().size())));
-        System.out.println("UNRELIABLE on Fluency: " + (((double) unreliableUserIDsFL.size()) / ((double) scoresPerUser.keySet().size())));
-        System.out.println("UNRELIABLE on Adequacy: " + (((double) unreliableUserIDsAD.size()) / ((double) scoresPerUser.keySet().size())));
-        for (String unreliableUserID : unreliableUserIDs) {
+        System.out.println("UNRELIABLE: " + (unreliableUserIDs.size() / ((double) scoresPerUser.keySet().size())));
+        System.out.println("UNRELIABLE on Fluency: " + (unreliableUserIDsFL.size() / ((double) scoresPerUser.keySet().size())));
+        System.out.println("UNRELIABLE on Adequacy: " + (unreliableUserIDsAD.size() / ((double) scoresPerUser.keySet().size())));
+        unreliableUserIDs.forEach((unreliableUserID) -> {
             scoresPerUser.remove(unreliableUserID);
-        }
+        });
         System.out.println("REMAINING users: " + scoresPerUser.keySet().size());
 
         //AGREEMENT VECTORS
@@ -210,14 +206,17 @@ public class ParseResultFiles {
                 }
                 if (usersOfSameInstances.size() > 1) {
                     ArrayList<String> instances = new ArrayList<>(scoresPerUser.get(userID).get("Fluency").keySet());
-                    for (String ID : usersOfSameInstances) {
+                    usersOfSameInstances.stream().map((ID) -> {
                         System.out.print("Fluency of " + ID + ":\t");
-                        for (String instance : instances) {
+                        return ID;
+                    }).map((ID) -> {
+                        instances.forEach((instance) -> {
                             System.out.print(scoresPerUser.get(ID).get("Fluency").get(instance) + "\t");
-                        }
+                        });
+                        return ID;
+                    }).forEachOrdered((_item) -> {
                         System.out.println();
-                    }
-                    System.out.println();
+                    });
                 }
             }
         }
@@ -239,42 +238,47 @@ public class ParseResultFiles {
                 }
                 if (usersOfSameInstances.size() > 1) {
                     ArrayList<String> instances = new ArrayList<>(scoresPerUser.get(userID).get("Adequacy").keySet());
-                    for (String ID : usersOfSameInstances) {
+                    usersOfSameInstances.stream().map((ID) -> {
                         System.out.print("Adequacy of " + ID + ":\t");
-                        for (String instance : instances) {
+                        return ID;
+                    }).map((ID) -> {
+                        instances.forEach((instance) -> {
                             System.out.print(scoresPerUser.get(ID).get("Adequacy").get(instance) + "\t");
-                        }
+                        });
+                        return ID;
+                    }).forEachOrdered((_item) -> {
                         System.out.println();
-                    }
-                    System.out.println();
+                    });
                 }
             }
         }
 
         HashMap<String, ArrayList<Integer>> scoresPerInstanceFluency = new HashMap<>();
         HashMap<String, ArrayList<Integer>> scoresPerInstanceAdequacy = new HashMap<>();
-        for (String userID : scoresPerUser.keySet()) {
-            for (String instance : scoresPerUser.get(userID).get("Fluency").keySet()) {
-                if (!instance.equals("CONTROL-Worse")
-                        && !instance.equals("CONTROL-Med")
-                        && !instance.equals("CONTROL-Best")) {
-                    if (!scoresPerInstanceFluency.containsKey(instance)) {
-                        scoresPerInstanceFluency.put(instance, new ArrayList<Integer>());
-                    }
-                    scoresPerInstanceFluency.get(instance).add(scoresPerUser.get(userID).get("Fluency").get(instance));
-                }
-            }
-            for (String instance : scoresPerUser.get(userID).get("Adequacy").keySet()) {
-                if (!instance.equals("CONTROL-Worse")
-                        && !instance.equals("CONTROL-Med")
-                        && !instance.equals("CONTROL-Best")) {
-                    if (!scoresPerInstanceAdequacy.containsKey(instance)) {
-                        scoresPerInstanceAdequacy.put(instance, new ArrayList<Integer>());
-                    }
-                    scoresPerInstanceAdequacy.get(instance).add(scoresPerUser.get(userID).get("Adequacy").get(instance));
-                }
-            }
-        }
+        scoresPerUser.keySet().stream().map((userID) -> {
+            scoresPerUser.get(userID).get("Fluency").keySet().stream().filter((instance) -> (!instance.equals("CONTROL-Worse")
+                    && !instance.equals("CONTROL-Med")
+                    && !instance.equals("CONTROL-Best"))).map((instance) -> {
+                        if (!scoresPerInstanceFluency.containsKey(instance)) {
+                            scoresPerInstanceFluency.put(instance, new ArrayList<Integer>());
+                        }
+                return instance;
+            }).forEachOrdered((instance) -> {
+                scoresPerInstanceFluency.get(instance).add(scoresPerUser.get(userID).get("Fluency").get(instance));
+            });
+            return userID;
+        }).forEachOrdered((userID) -> {
+            scoresPerUser.get(userID).get("Adequacy").keySet().stream().filter((instance) -> (!instance.equals("CONTROL-Worse")
+                    && !instance.equals("CONTROL-Med")
+                    && !instance.equals("CONTROL-Best"))).map((instance) -> {
+                        if (!scoresPerInstanceAdequacy.containsKey(instance)) {
+                            scoresPerInstanceAdequacy.put(instance, new ArrayList<Integer>());
+                        }
+                return instance;
+            }).forEachOrdered((instance) -> {
+                scoresPerInstanceAdequacy.get(instance).add(scoresPerUser.get(userID).get("Adequacy").get(instance));
+            });
+        });
 
         ArrayList<Double> LOLS_BAGEL_AVG_fluency_set = new ArrayList<>();
         ArrayList<Double> LOLS_SFHOT_AVG_fluency_set = new ArrayList<>();
@@ -425,27 +429,23 @@ public class ParseResultFiles {
         System.out.println();
 
         HashMap<String, HashMap<String, ArrayList<Integer>>> perInstancePerSystemFluency = new HashMap<>();
-        for (String instance : scoresPerInstanceFluency.keySet()) {
-            if (!instance.startsWith("CONTROL")) {
-                String inID = instance.substring(instance.indexOf("_") + 1);
-                String system = instance.substring(0, instance.indexOf("_"));
-                if (!perInstancePerSystemFluency.containsKey(inID)) {
-                    perInstancePerSystemFluency.put(inID, new HashMap<String, ArrayList<Integer>>());
-                }
-                perInstancePerSystemFluency.get(inID).put(system, scoresPerInstanceFluency.get(instance));
+        scoresPerInstanceFluency.keySet().stream().filter((instance) -> (!instance.startsWith("CONTROL"))).forEachOrdered((instance) -> {
+            String inID = instance.substring(instance.indexOf('_') + 1);
+            String system = instance.substring(0, instance.indexOf('_'));
+            if (!perInstancePerSystemFluency.containsKey(inID)) {
+                perInstancePerSystemFluency.put(inID, new HashMap<String, ArrayList<Integer>>());
             }
-        }
+            perInstancePerSystemFluency.get(inID).put(system, scoresPerInstanceFluency.get(instance));
+        });
         HashMap<String, HashMap<String, ArrayList<Integer>>> perInstancePerSystemAdequacy = new HashMap<>();
-        for (String instance : scoresPerInstanceAdequacy.keySet()) {
-            if (!instance.startsWith("CONTROL")) {
-                String inID = instance.substring(instance.indexOf("_") + 1);
-                String system = instance.substring(0, instance.indexOf("_"));
-                if (!perInstancePerSystemAdequacy.containsKey(inID)) {
-                    perInstancePerSystemAdequacy.put(inID, new HashMap<String, ArrayList<Integer>>());
-                }
-                perInstancePerSystemAdequacy.get(inID).put(system, scoresPerInstanceAdequacy.get(instance));
+        scoresPerInstanceAdequacy.keySet().stream().filter((instance) -> (!instance.startsWith("CONTROL"))).forEachOrdered((instance) -> {
+            String inID = instance.substring(instance.indexOf('_') + 1);
+            String system = instance.substring(0, instance.indexOf('_'));
+            if (!perInstancePerSystemAdequacy.containsKey(inID)) {
+                perInstancePerSystemAdequacy.put(inID, new HashMap<String, ArrayList<Integer>>());
             }
-        }
+            perInstancePerSystemAdequacy.get(inID).put(system, scoresPerInstanceAdequacy.get(instance));
+        });
         System.out.println(perInstancePerSystemFluency);
         System.out.println(perInstancePerSystemAdequacy);
 
@@ -476,7 +476,7 @@ public class ParseResultFiles {
             int fluencyCountsOTHER = 0;
             int infoCountsLOLS = 0;
             int infoCountsOTHER = 0;
-            id = id.substring(id.indexOf("_") + 1);
+            id = id.substring(id.indexOf('_') + 1);
             if (perInstancePerSystemFluency.containsKey(id)) {
                 boolean other = false;
                 ArrayList<String> keys = new ArrayList<>();
@@ -601,7 +601,6 @@ public class ParseResultFiles {
             if (!overAllTitle.equals(title)) {
                 System.out.println(overAllTitle);
                 System.out.println(title);
-                System.out.println("WTF");
                 System.exit(0);
             }
             outs.add(out);
@@ -655,22 +654,9 @@ public class ParseResultFiles {
             }
         }
         System.out.println(overAllTitle);
-        for (String out : outs) {
+        outs.forEach((out) -> {
             System.out.println(out);
-        }
-        /*System.out.println("------------------");
-        System.out.println("emptyIDsLOLS: " + emptyIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("emptyIDsOTHER: " + emptyIDsOTHER);
-        System.out.println("------------------");
-        System.out.println("emptyFluencyIDsLOLS: " + emptyFluencyIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("emptyFluencyIDsOTHER: " + emptyFluencyIDsOTHER);
-        System.out.println("------------------");
-        System.out.println("emptyInfoIDsLOLS: " + emptyInfoIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("emptyInfoIDsOTHER: " + emptyInfoIDsOTHER);
-        System.out.println("------------------");*/
+        });
 
         System.out.println("oneFluencyIDsLOLS: " + oneFluencyIDsLOLS);
         System.out.println("------------------");
@@ -679,7 +665,6 @@ public class ParseResultFiles {
         System.out.println("oneInfoIDsLOLS: " + oneInfoIDsLOLS);
         System.out.println("------------------");
         System.out.println("oneInfoIDsOTHER: " + oneInfoIDsOTHER);
-        System.out.println("------------------");
 
         /*System.out.println("twoFluencyIDsLOLS: " + twoFluencyIDsLOLS);
         System.out.println("------------------");
@@ -690,16 +675,15 @@ public class ParseResultFiles {
         System.out.println("twoInfoIDsOTHER: " + twoInfoIDsOTHER);
         System.out.println("------------------");*/
         ArrayList<String> redoInstances = new ArrayList<>();
-        for (String id : instanceIDs) {
-            String modId = id.substring(0, id.indexOf("-"));
-            String no = id.substring(id.indexOf("-") + 1).trim();
+        instanceIDs.stream().map((id) -> {
+            String modId = id.substring(0, id.indexOf('-'));
+            String no = id.substring(id.indexOf('-') + 1).trim();
             if (no.length() == 1) {
                 no = "00" + no;
             } else if (no.length() == 2) {
                 no = "0" + no;
             }
             modId += "\t" + no;
-
             String modIDLOLS = "LOLS_" + modId;
             String outLOLS = "" + modIDLOLS + "\t";
             if (oneFluencyIDsLOLS.contains(id) || oneInfoIDsLOLS.contains(id)) {
@@ -734,12 +718,14 @@ public class ParseResultFiles {
                     outOTHER += "10\t";
                 }
             }
+            return outOTHER;
+        }).forEachOrdered((outOTHER) -> {
             redoInstances.add(outOTHER);
-        }
+        });
         Collections.sort(redoInstances);
-        for (String out : redoInstances) {
+        redoInstances.forEach((out) -> {
             System.out.println(out);
-        }
+        });
     }
 
     /**
@@ -907,114 +893,86 @@ public class ParseResultFiles {
                         String parsedID = arr[0].substring("Fluency".length()).trim();
                         HashSet<String> ids = new HashSet<>();
                         if (bagelLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : bagelLOLSTextsMap.keySet()) {
-                                if (bagelLOLSTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            bagelLOLSTextsMap.keySet().stream().filter((id) -> (bagelLOLSTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (bagelDusekTextsMap.containsValue(arr[1])) {
-                            for (String id : bagelDusekTextsMap.keySet()) {
-                                if (bagelDusekTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            bagelDusekTextsMap.keySet().stream().filter((id) -> (bagelDusekTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfHotelLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : sfHotelLOLSTextsMap.keySet()) {
-                                if (sfHotelLOLSTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfHotelLOLSTextsMap.keySet().stream().filter((id) -> (sfHotelLOLSTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfHotelWenTextsMap.containsValue(arr[1])) {
-                            for (String id : sfHotelWenTextsMap.keySet()) {
-                                if (sfHotelWenTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfHotelWenTextsMap.keySet().stream().filter((id) -> (sfHotelWenTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfRestLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : sfRestLOLSTextsMap.keySet()) {
-                                if (sfRestLOLSTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfRestLOLSTextsMap.keySet().stream().filter((id) -> (sfRestLOLSTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfRestWenTextsMap.containsValue(arr[1])) {
-                            for (String id : sfRestWenTextsMap.keySet()) {
-                                if (sfRestWenTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfRestWenTextsMap.keySet().stream().filter((id) -> (sfRestWenTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (controlTextsMap.containsValue(arr[1])) {
-                            for (String id : controlTextsMap.keySet()) {
-                                if (controlTextsMap.get(id).equals(arr[1])) {
-                                    String cleanID = id.substring(0, id.length() - 2);
-                                    ids.add(cleanID);
-                                }
-                            }
+                            controlTextsMap.keySet().stream().filter((id) -> (controlTextsMap.get(id).equals(arr[1]))).map((id) -> id.substring(0, id.length() - 2)).forEachOrdered((cleanID) -> {
+                                ids.add(cleanID);
+                            });
                         }
 
                         if (ids.isEmpty()) {
                             if (bagelLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : bagelLOLSTextsMap.keySet()) {
-                                    if (bagelLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                bagelLOLSTextsMap.keySet().stream().filter((id) -> (bagelLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (bagelDusekTextsMap.containsValue(arr[1])) {
-                                for (String id : bagelDusekTextsMap.keySet()) {
-                                    if (bagelDusekTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                bagelDusekTextsMap.keySet().stream().filter((id) -> (bagelDusekTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfHotelLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : sfHotelLOLSTextsMap.keySet()) {
-                                    if (sfHotelLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfHotelLOLSTextsMap.keySet().stream().filter((id) -> (sfHotelLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfHotelWenTextsMap.containsValue(arr[1])) {
-                                for (String id : sfHotelWenTextsMap.keySet()) {
-                                    if (sfHotelWenTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfHotelWenTextsMap.keySet().stream().filter((id) -> (sfHotelWenTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfRestLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : sfRestLOLSTextsMap.keySet()) {
-                                    if (sfRestLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfRestLOLSTextsMap.keySet().stream().filter((id) -> (sfRestLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfRestWenTextsMap.containsValue(arr[1])) {
-                                for (String id : sfRestWenTextsMap.keySet()) {
-                                    if (sfRestWenTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfRestWenTextsMap.keySet().stream().filter((id) -> (sfRestWenTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                         }
                         if (ids.isEmpty()) {
-                            System.out.println(parsedID + " " + arr[1]);
                             System.exit(0);
                         }
 
@@ -1031,113 +989,85 @@ public class ParseResultFiles {
                         String parsedID = arr[0].substring("Adequacy".length()).trim();
                         HashSet<String> ids = new HashSet<>();
                         if (bagelLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : bagelLOLSTextsMap.keySet()) {
-                                if (bagelLOLSTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            bagelLOLSTextsMap.keySet().stream().filter((id) -> (bagelLOLSTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (bagelDusekTextsMap.containsValue(arr[1])) {
-                            for (String id : bagelDusekTextsMap.keySet()) {
-                                if (bagelDusekTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            bagelDusekTextsMap.keySet().stream().filter((id) -> (bagelDusekTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfHotelLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : sfHotelLOLSTextsMap.keySet()) {
-                                if (sfHotelLOLSTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfHotelLOLSTextsMap.keySet().stream().filter((id) -> (sfHotelLOLSTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfHotelWenTextsMap.containsValue(arr[1])) {
-                            for (String id : sfHotelWenTextsMap.keySet()) {
-                                if (sfHotelWenTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfHotelWenTextsMap.keySet().stream().filter((id) -> (sfHotelWenTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfRestLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : sfRestLOLSTextsMap.keySet()) {
-                                if (sfRestLOLSTextsMap.get(id).equals(arr[1])) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfRestLOLSTextsMap.keySet().stream().filter((id) -> (sfRestLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                ids.add(id);
+                            });
                         }
                         if (sfRestWenTextsMap.containsValue(arr[1])) {
-                            for (String id : sfRestWenTextsMap.keySet()) {
-                                if (sfRestWenTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfRestWenTextsMap.keySet().stream().filter((id) -> (sfRestWenTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (controlTextsMap.containsValue(arr[1])) {
-                            for (String id : controlTextsMap.keySet()) {
-                                if (controlTextsMap.get(id).equals(arr[1])) {
-                                    String cleanID = id.substring(0, id.length() - 2);
-                                    ids.add(cleanID);
-                                }
-                            }
+                            controlTextsMap.keySet().stream().filter((id) -> (controlTextsMap.get(id).equals(arr[1]))).map((id) -> id.substring(0, id.length() - 2)).forEachOrdered((cleanID) -> {
+                                ids.add(cleanID);
+                            });
                         }
 
                         if (ids.isEmpty()) {
                             if (bagelLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : bagelLOLSTextsMap.keySet()) {
-                                    if (bagelLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                bagelLOLSTextsMap.keySet().stream().filter((id) -> (bagelLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (bagelDusekTextsMap.containsValue(arr[1])) {
-                                for (String id : bagelDusekTextsMap.keySet()) {
-                                    if (bagelDusekTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                bagelDusekTextsMap.keySet().stream().filter((id) -> (bagelDusekTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfHotelLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : sfHotelLOLSTextsMap.keySet()) {
-                                    if (sfHotelLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfHotelLOLSTextsMap.keySet().stream().filter((id) -> (sfHotelLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfHotelWenTextsMap.containsValue(arr[1])) {
-                                for (String id : sfHotelWenTextsMap.keySet()) {
-                                    if (sfHotelWenTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfHotelWenTextsMap.keySet().stream().filter((id) -> (sfHotelWenTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfRestLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : sfRestLOLSTextsMap.keySet()) {
-                                    if (sfRestLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfRestLOLSTextsMap.keySet().stream().filter((id) -> (sfRestLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfRestWenTextsMap.containsValue(arr[1])) {
-                                for (String id : sfRestWenTextsMap.keySet()) {
-                                    if (sfRestWenTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfRestWenTextsMap.keySet().stream().filter((id) -> (sfRestWenTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                         }
 
                         if (ids.isEmpty()) {
-                            System.out.println(parsedID + " " + arr[1]);
                             System.exit(0);
                         }
                         for (String id : ids) {
@@ -1153,113 +1083,85 @@ public class ParseResultFiles {
                         String parsedID = arr[0].substring("Informativeness".length()).trim();
                         HashSet<String> ids = new HashSet<>();
                         if (bagelLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : bagelLOLSTextsMap.keySet()) {
-                                if (bagelLOLSTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            bagelLOLSTextsMap.keySet().stream().filter((id) -> (bagelLOLSTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (bagelDusekTextsMap.containsValue(arr[1])) {
-                            for (String id : bagelDusekTextsMap.keySet()) {
-                                if (bagelDusekTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            bagelDusekTextsMap.keySet().stream().filter((id) -> (bagelDusekTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfHotelLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : sfHotelLOLSTextsMap.keySet()) {
-                                if (sfHotelLOLSTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfHotelLOLSTextsMap.keySet().stream().filter((id) -> (sfHotelLOLSTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfHotelWenTextsMap.containsValue(arr[1])) {
-                            for (String id : sfHotelWenTextsMap.keySet()) {
-                                if (sfHotelWenTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfHotelWenTextsMap.keySet().stream().filter((id) -> (sfHotelWenTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (sfRestLOLSTextsMap.containsValue(arr[1])) {
-                            for (String id : sfRestLOLSTextsMap.keySet()) {
-                                if (sfRestLOLSTextsMap.get(id).equals(arr[1])) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfRestLOLSTextsMap.keySet().stream().filter((id) -> (sfRestLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                ids.add(id);
+                            });
                         }
                         if (sfRestWenTextsMap.containsValue(arr[1])) {
-                            for (String id : sfRestWenTextsMap.keySet()) {
-                                if (sfRestWenTextsMap.get(id).equals(arr[1])
-                                        && (parsedID.equals(id)
-                                        || parsedID.isEmpty())) {
-                                    ids.add(id);
-                                }
-                            }
+                            sfRestWenTextsMap.keySet().stream().filter((id) -> (sfRestWenTextsMap.get(id).equals(arr[1])
+                                    && (parsedID.equals(id)
+                                            || parsedID.isEmpty()))).forEachOrdered((id) -> {
+                                                ids.add(id);
+                            });
                         }
                         if (controlTextsMap.containsValue(arr[1])) {
-                            for (String id : controlTextsMap.keySet()) {
-                                if (controlTextsMap.get(id).equals(arr[1])) {
-                                    String cleanID = id.substring(0, id.length() - 2);
-                                    ids.add(cleanID);
-                                }
-                            }
+                            controlTextsMap.keySet().stream().filter((id) -> (controlTextsMap.get(id).equals(arr[1]))).map((id) -> id.substring(0, id.length() - 2)).forEachOrdered((cleanID) -> {
+                                ids.add(cleanID);
+                            });
                         }
 
                         if (ids.isEmpty()) {
                             if (bagelLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : bagelLOLSTextsMap.keySet()) {
-                                    if (bagelLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                bagelLOLSTextsMap.keySet().stream().filter((id) -> (bagelLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (bagelDusekTextsMap.containsValue(arr[1])) {
-                                for (String id : bagelDusekTextsMap.keySet()) {
-                                    if (bagelDusekTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                bagelDusekTextsMap.keySet().stream().filter((id) -> (bagelDusekTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfHotelLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : sfHotelLOLSTextsMap.keySet()) {
-                                    if (sfHotelLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfHotelLOLSTextsMap.keySet().stream().filter((id) -> (sfHotelLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfHotelWenTextsMap.containsValue(arr[1])) {
-                                for (String id : sfHotelWenTextsMap.keySet()) {
-                                    if (sfHotelWenTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfHotelWenTextsMap.keySet().stream().filter((id) -> (sfHotelWenTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfRestLOLSTextsMap.containsValue(arr[1])) {
-                                for (String id : sfRestLOLSTextsMap.keySet()) {
-                                    if (sfRestLOLSTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfRestLOLSTextsMap.keySet().stream().filter((id) -> (sfRestLOLSTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                             if (sfRestWenTextsMap.containsValue(arr[1])) {
-                                for (String id : sfRestWenTextsMap.keySet()) {
-                                    if (sfRestWenTextsMap.get(id).equals(arr[1])) {
-                                        ids.add(id);
-                                    }
-                                }
+                                sfRestWenTextsMap.keySet().stream().filter((id) -> (sfRestWenTextsMap.get(id).equals(arr[1]))).forEachOrdered((id) -> {
+                                    ids.add(id);
+                                });
                             }
                         }
 
                         if (ids.isEmpty()) {
-                            System.out.println(parsedID + " " + arr[1]);
                             System.exit(0);
                         }
                         for (String id : ids) {
@@ -1288,7 +1190,7 @@ public class ParseResultFiles {
         HashSet<String> unreliableUserIDs = new HashSet<>();
         HashSet<String> unreliableUserIDsFL = new HashSet<>();
         HashSet<String> unreliableUserIDsAD = new HashSet<>();
-        for (String userID : scoresPerUser.keySet()) {
+        scoresPerUser.keySet().forEach((userID) -> {
             if (scoresPerUser.get(userID).get("Fluency").get("CONTROL-Worse") < scoresPerUser.get(userID).get("Fluency").get("CONTROL-Med")
                     && scoresPerUser.get(userID).get("Fluency").get("CONTROL-Worse") < scoresPerUser.get(userID).get("Fluency").get("CONTROL-Best")
                     && scoresPerUser.get(userID).get("Fluency").get("CONTROL-Med") <= scoresPerUser.get(userID).get("Fluency").get("CONTROL-Best")
@@ -1314,15 +1216,15 @@ public class ParseResultFiles {
                     unreliableUserIDsAD.add(userID);
                 }
             }
-        }
-        System.out.println("UNRELIABLE: " + (((double) unreliableUserIDs.size()) / ((double) scoresPerUser.keySet().size())));
-        System.out.println("UNRELIABLE on Fluency: " + (((double) unreliableUserIDsFL.size()) / ((double) scoresPerUser.keySet().size())));
-        System.out.println("UNRELIABLE on Adequacy: " + (((double) unreliableUserIDsAD.size()) / ((double) scoresPerUser.keySet().size())));
+        });
+        System.out.println("UNRELIABLE: " + (unreliableUserIDs.size() / ((double) scoresPerUser.keySet().size())));
+        System.out.println("UNRELIABLE on Fluency: " + (unreliableUserIDsFL.size() / ((double) scoresPerUser.keySet().size())));
+        System.out.println("UNRELIABLE on Adequacy: " + (unreliableUserIDsAD.size() / ((double) scoresPerUser.keySet().size())));
 
         System.out.println("Total Users: " + scoresPerUser.keySet().size());
-        for (String unreliableUserID : unreliableUserIDs) {
+        unreliableUserIDs.forEach((unreliableUserID) -> {
             scoresPerUser.remove(unreliableUserID);
-        }
+        });
         System.out.println("Total Reliable Users: " + scoresPerUser.keySet().size());
 
         //AGREEMENT VECTORS
@@ -1343,14 +1245,17 @@ public class ParseResultFiles {
                 }
                 if (usersOfSameInstances.size() > 1) {
                     ArrayList<String> instances = new ArrayList<>(scoresPerUser.get(userID).get("Fluency").keySet());
-                    for (String ID : usersOfSameInstances) {
+                    usersOfSameInstances.stream().map((ID) -> {
                         System.out.print("Fluency of " + ID + ":\t");
-                        for (String instance : instances) {
+                        return ID;
+                    }).map((ID) -> {
+                        instances.forEach((instance) -> {
                             System.out.print(scoresPerUser.get(ID).get("Fluency").get(instance) + "\t");
-                        }
+                        });
+                        return ID;
+                    }).forEachOrdered((_item) -> {
                         System.out.println();
-                    }
-                    System.out.println();
+                    });
                 }
             }
         }
@@ -1372,42 +1277,47 @@ public class ParseResultFiles {
                 }
                 if (usersOfSameInstances.size() > 1) {
                     ArrayList<String> instances = new ArrayList<>(scoresPerUser.get(userID).get("Adequacy").keySet());
-                    for (String ID : usersOfSameInstances) {
+                    usersOfSameInstances.stream().map((ID) -> {
                         System.out.print("Adequacy of " + ID + ":\t");
-                        for (String instance : instances) {
+                        return ID;
+                    }).map((ID) -> {
+                        instances.forEach((instance) -> {
                             System.out.print(scoresPerUser.get(ID).get("Adequacy").get(instance) + "\t");
-                        }
+                        });
+                        return ID;
+                    }).forEachOrdered((_item) -> {
                         System.out.println();
-                    }
-                    System.out.println();
+                    });
                 }
             }
         }
 
         HashMap<String, ArrayList<Integer>> scoresPerInstanceFluency = new HashMap<>();
         HashMap<String, ArrayList<Integer>> scoresPerInstanceAdequacy = new HashMap<>();
-        for (String userID : scoresPerUser.keySet()) {
-            for (String instance : scoresPerUser.get(userID).get("Fluency").keySet()) {
-                if (!instance.equals("CONTROL-Worse")
-                        && !instance.equals("CONTROL-Med")
-                        && !instance.equals("CONTROL-Best")) {
-                    if (!scoresPerInstanceFluency.containsKey(instance)) {
-                        scoresPerInstanceFluency.put(instance, new ArrayList<Integer>());
-                    }
-                    scoresPerInstanceFluency.get(instance).add(scoresPerUser.get(userID).get("Fluency").get(instance));
-                }
-            }
-            for (String instance : scoresPerUser.get(userID).get("Adequacy").keySet()) {
-                if (!instance.equals("CONTROL-Worse")
-                        && !instance.equals("CONTROL-Med")
-                        && !instance.equals("CONTROL-Best")) {
-                    if (!scoresPerInstanceAdequacy.containsKey(instance)) {
-                        scoresPerInstanceAdequacy.put(instance, new ArrayList<Integer>());
-                    }
-                    scoresPerInstanceAdequacy.get(instance).add(scoresPerUser.get(userID).get("Adequacy").get(instance));
-                }
-            }
-        }
+        scoresPerUser.keySet().stream().map((userID) -> {
+            scoresPerUser.get(userID).get("Fluency").keySet().stream().filter((instance) -> (!instance.equals("CONTROL-Worse")
+                    && !instance.equals("CONTROL-Med")
+                    && !instance.equals("CONTROL-Best"))).map((instance) -> {
+                        if (!scoresPerInstanceFluency.containsKey(instance)) {
+                            scoresPerInstanceFluency.put(instance, new ArrayList<Integer>());
+                        }
+                return instance;
+            }).forEachOrdered((instance) -> {
+                scoresPerInstanceFluency.get(instance).add(scoresPerUser.get(userID).get("Fluency").get(instance));
+            });
+            return userID;
+        }).forEachOrdered((userID) -> {
+            scoresPerUser.get(userID).get("Adequacy").keySet().stream().filter((instance) -> (!instance.equals("CONTROL-Worse")
+                    && !instance.equals("CONTROL-Med")
+                    && !instance.equals("CONTROL-Best"))).map((instance) -> {
+                        if (!scoresPerInstanceAdequacy.containsKey(instance)) {
+                            scoresPerInstanceAdequacy.put(instance, new ArrayList<Integer>());
+                        }
+                return instance;
+            }).forEachOrdered((instance) -> {
+                scoresPerInstanceAdequacy.get(instance).add(scoresPerUser.get(userID).get("Adequacy").get(instance));
+            });
+        });
 
         ArrayList<Double> LOLS_BAGEL_AVG_fluency_set = new ArrayList<>();
         ArrayList<Double> LOLS_SFHOT_AVG_fluency_set = new ArrayList<>();
@@ -1650,7 +1560,6 @@ public class ParseResultFiles {
         System.out.println();
         System.out.println();
         System.out.println("WEN_SFRES\t" + WEN_SFRES_scores_ad);
-        System.out.println("LOLS_SFRES\t" + LOLS_SFRES_scores_ad);
     }
     
     /**
@@ -1696,11 +1605,9 @@ public class ParseResultFiles {
         } catch (IOException ex) {
             Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
         }
-        for (String s2 : twoTexts) {
-            if (!oneTexts.contains(s2)) {
-                System.out.println(oldTextsMRMap.get(s2) + "\t" + oldTextsMap.get(s2) + "\t" + newTextsMRMap.get(oldTextsMRMap.get(s2)));
-            }
-        }
+        twoTexts.stream().filter((s2) -> (!oneTexts.contains(s2))).forEachOrdered((s2) -> {
+            System.out.println(oldTextsMRMap.get(s2) + "\t" + oldTextsMap.get(s2) + "\t" + newTextsMRMap.get(oldTextsMRMap.get(s2)));
+        });
     }
 
     /**
@@ -1762,20 +1669,17 @@ public class ParseResultFiles {
         }
 
         HashMap<String, String> abstractMRs = new HashMap<>();
-        for (String MR : mrs.values()) {
+        mrs.values().forEach((MR) -> {
             HashMap<String, HashSet<String>> attributeValues = new HashMap<>();
-
-            String MRstr = MR.substring(MR.indexOf(":") + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
-            String predicate = MRstr.substring(0, MRstr.indexOf("("));
+            String MRstr = MR.substring(MR.indexOf(':') + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
+            String predicate = MRstr.substring(0, MRstr.indexOf('('));
             String abstractMR = predicate + ":";
             String attributesStr = MRstr.substring(MRstr.indexOf('(') + 1, MRstr.length() - 1);
             attributeValues = new HashMap<>();
             if (!attributesStr.isEmpty()) {
                 HashMap<String, Integer> attrXIndeces = new HashMap<>();
-
                 String[] args = attributesStr.split(";");
                 if (attributesStr.contains("|")) {
-                    System.out.println(attributesStr);
                     System.exit(0);
                 }
                 for (String arg : args) {
@@ -1820,7 +1724,6 @@ public class ParseResultFiles {
                     if (value.isEmpty()) {
                         value = attr;
                     }
-
                     if (value.startsWith("\'")) {
                         value = value.substring(1, value.length() - 1);
                     }
@@ -1835,19 +1738,17 @@ public class ParseResultFiles {
                         value = "x" + index;
                     }
                     if (value.isEmpty()) {
-                        System.out.println("EMPTY VALUE");
                         System.exit(0);
                     }
-
                     attributeValues.get(attr).add(value.trim().toLowerCase());
                 }
             }
             ArrayList<String> attrs = new ArrayList<>(attributeValues.keySet());
             Collections.sort(attrs);
             HashMap<String, Integer> xCounts = new HashMap<>();
-            for (String attr : attrs) {
+            attrs.forEach((attr) -> {
                 xCounts.put(attr, 0);
-            }
+            });
             for (String attr : attrs) {
                 abstractMR += attr + "={";
 
@@ -1876,7 +1777,7 @@ public class ParseResultFiles {
                 abstractMR += "}";
             }
             abstractMRs.put(MR, abstractMR);
-        }
+        });
 
         HashSet<String> uniqueTextsSFHOTEL = new HashSet<>();
         HashSet<String> uniqueTextsSFREST = new HashSet<>();
@@ -1925,81 +1826,71 @@ public class ParseResultFiles {
         System.out.println(uniqueTextsSFREST.size());
 
         HashMap<String, HashSet<String>> evalInstanceIDToMrID_LOLS = new HashMap<>();
-        for (String evalInstanceID : mrsPerEvalInstanceID.keySet()) {
-            if (evalInstanceID.contains("LOLS")) {
-                if (evalInstanceID.contains("BAGEL")) {
-                    for (String mrID : mrsBAGELSet.keySet()) {
-                        if (mrsBAGELSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID))) {
-                            if (!evalInstanceIDToMrID_LOLS.containsKey(evalInstanceID)) {
-                                evalInstanceIDToMrID_LOLS.put(evalInstanceID, new HashSet<String>());
-                            }
-                            evalInstanceIDToMrID_LOLS.get(evalInstanceID).add(mrID);
-                        }
+        mrsPerEvalInstanceID.keySet().stream().filter((evalInstanceID) -> (evalInstanceID.contains("LOLS"))).map((evalInstanceID) -> {
+            if (evalInstanceID.contains("BAGEL")) {
+                mrsBAGELSet.keySet().stream().filter((mrID) -> (mrsBAGELSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID)))).forEachOrdered((mrID) -> {
+                    if (!evalInstanceIDToMrID_LOLS.containsKey(evalInstanceID)) {
+                        evalInstanceIDToMrID_LOLS.put(evalInstanceID, new HashSet<String>());
                     }
-                } else if (evalInstanceID.contains("SFHOT")) {
-                    for (String mrID : mrsSFHOTELSet.keySet()) {
-                        if (mrsSFHOTELSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID))) {
-                            if (!evalInstanceIDToMrID_LOLS.containsKey(evalInstanceID)) {
-                                evalInstanceIDToMrID_LOLS.put(evalInstanceID, new HashSet<String>());
-                            }
-                            evalInstanceIDToMrID_LOLS.get(evalInstanceID).add(mrID);
-                        }
+                    evalInstanceIDToMrID_LOLS.get(evalInstanceID).add(mrID);
+                });
+            } else if (evalInstanceID.contains("SFHOT")) {
+                mrsSFHOTELSet.keySet().stream().filter((mrID) -> (mrsSFHOTELSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID)))).forEachOrdered((mrID) -> {
+                    if (!evalInstanceIDToMrID_LOLS.containsKey(evalInstanceID)) {
+                        evalInstanceIDToMrID_LOLS.put(evalInstanceID, new HashSet<String>());
                     }
-                } else if (evalInstanceID.contains("SFRES")) {
-                    for (String mrID : mrsSFRESTSet.keySet()) {
-                        if (mrsSFRESTSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID))) {
-                            if (!evalInstanceIDToMrID_LOLS.containsKey(evalInstanceID)) {
-                                evalInstanceIDToMrID_LOLS.put(evalInstanceID, new HashSet<String>());
-                            }
-                            evalInstanceIDToMrID_LOLS.get(evalInstanceID).add(mrID);
-                        }
+                    evalInstanceIDToMrID_LOLS.get(evalInstanceID).add(mrID);
+                });
+            } else if (evalInstanceID.contains("SFRES")) {
+                mrsSFRESTSet.keySet().stream().filter((mrID) -> (mrsSFRESTSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID)))).forEachOrdered((mrID) -> {
+                    if (!evalInstanceIDToMrID_LOLS.containsKey(evalInstanceID)) {
+                        evalInstanceIDToMrID_LOLS.put(evalInstanceID, new HashSet<String>());
                     }
-                }
-                if (!evalInstanceIDToMrID_LOLS.containsKey(evalInstanceID) || evalInstanceIDToMrID_LOLS.get(evalInstanceID).isEmpty()) {
-                    System.out.println("WTF " + evalInstanceID);
-                    System.exit(0);
-                }
+                    evalInstanceIDToMrID_LOLS.get(evalInstanceID).add(mrID);
+                });
             }
-        }
+            return evalInstanceID;
+        }).filter((evalInstanceID) -> (!evalInstanceIDToMrID_LOLS.containsKey(evalInstanceID) || evalInstanceIDToMrID_LOLS.get(evalInstanceID).isEmpty())).map((evalInstanceID) -> {
+            System.out.println("WTF " + evalInstanceID);
+            return evalInstanceID;
+        }).forEachOrdered((_item) -> {
+            System.exit(0);
+        });
 
         HashMap<String, HashSet<String>> evalInstanceIDToMrID_OTHER = new HashMap<>();
-        for (String evalInstanceID : mrsPerEvalInstanceID.keySet()) {
-            if (!evalInstanceID.contains("LOLS")) {
-                if (evalInstanceID.contains("BAGEL")) {
-                    for (String mrID : mrsBAGELSet.keySet()) {
-                        if (mrsBAGELSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID))) {
-                            if (!evalInstanceIDToMrID_OTHER.containsKey(evalInstanceID)) {
-                                evalInstanceIDToMrID_OTHER.put(evalInstanceID, new HashSet<String>());
-                            }
-                            evalInstanceIDToMrID_OTHER.get(evalInstanceID).add(mrID);
-                        }
+        mrsPerEvalInstanceID.keySet().stream().filter((evalInstanceID) -> (!evalInstanceID.contains("LOLS"))).map((evalInstanceID) -> {
+            if (evalInstanceID.contains("BAGEL")) {
+                mrsBAGELSet.keySet().stream().filter((mrID) -> (mrsBAGELSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID)))).forEachOrdered((mrID) -> {
+                    if (!evalInstanceIDToMrID_OTHER.containsKey(evalInstanceID)) {
+                        evalInstanceIDToMrID_OTHER.put(evalInstanceID, new HashSet<String>());
                     }
-                } else if (evalInstanceID.contains("SFHOT")) {
-                    for (String mrID : mrsSFHOTELSet.keySet()) {
-                        if (mrsSFHOTELSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID))) {
-                            if (!evalInstanceIDToMrID_OTHER.containsKey(evalInstanceID)) {
-                                evalInstanceIDToMrID_OTHER.put(evalInstanceID, new HashSet<String>());
-                            }
-                            evalInstanceIDToMrID_OTHER.get(evalInstanceID).add(mrID);
-                        }
+                    evalInstanceIDToMrID_OTHER.get(evalInstanceID).add(mrID);
+                });
+            } else if (evalInstanceID.contains("SFHOT")) {
+                mrsSFHOTELSet.keySet().stream().filter((mrID) -> (mrsSFHOTELSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID)))).forEachOrdered((mrID) -> {
+                    if (!evalInstanceIDToMrID_OTHER.containsKey(evalInstanceID)) {
+                        evalInstanceIDToMrID_OTHER.put(evalInstanceID, new HashSet<String>());
                     }
-                } else if (evalInstanceID.contains("SFRES")) {
-                    for (String mrID : mrsSFRESTSet.keySet()) {
-                        if (mrsSFRESTSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID))) {
-                            if (!evalInstanceIDToMrID_OTHER.containsKey(evalInstanceID)) {
-                                evalInstanceIDToMrID_OTHER.put(evalInstanceID, new HashSet<String>());
-                            }
-                            evalInstanceIDToMrID_OTHER.get(evalInstanceID).add(mrID);
-                        }
+                    evalInstanceIDToMrID_OTHER.get(evalInstanceID).add(mrID);
+                });
+            } else if (evalInstanceID.contains("SFRES")) {
+                mrsSFRESTSet.keySet().stream().filter((mrID) -> (mrsSFRESTSet.get(mrID).equals(mrsPerEvalInstanceID.get(evalInstanceID)))).forEachOrdered((mrID) -> {
+                    if (!evalInstanceIDToMrID_OTHER.containsKey(evalInstanceID)) {
+                        evalInstanceIDToMrID_OTHER.put(evalInstanceID, new HashSet<String>());
                     }
-                }
-                if (!evalInstanceIDToMrID_OTHER.containsKey(evalInstanceID) || evalInstanceIDToMrID_OTHER.get(evalInstanceID).isEmpty()) {
-                    System.out.println("WTF " + evalInstanceID);
-                    System.out.println("WTF " + mrsPerEvalInstanceID.get(evalInstanceID));
-                    System.exit(0);
-                }
+                    evalInstanceIDToMrID_OTHER.get(evalInstanceID).add(mrID);
+                });
             }
-        }
+            return evalInstanceID;
+        }).filter((evalInstanceID) -> (!evalInstanceIDToMrID_OTHER.containsKey(evalInstanceID) || evalInstanceIDToMrID_OTHER.get(evalInstanceID).isEmpty())).map((evalInstanceID) -> {
+            System.out.println("WTF " + evalInstanceID);
+            return evalInstanceID;
+        }).map((evalInstanceID) -> {
+            System.out.println("WTF " + mrsPerEvalInstanceID.get(evalInstanceID));
+            return evalInstanceID;
+        }).forEachOrdered((_item) -> {
+            System.exit(0);
+        });
 
         /*HashMap<String, HashSet<String>> mrIDToEvalInstanceID_LOLS = new HashMap<>();
         for (String mrID : mrsBAGEL.keySet()) {
@@ -2153,7 +2044,7 @@ public class ParseResultFiles {
         HashSet<String> unreliableUserIDs = new HashSet<>();
         HashSet<String> unreliableUserIDsFL = new HashSet<>();
         HashSet<String> unreliableUserIDsAD = new HashSet<>();
-        for (String userID : scoresPerUser.keySet()) {
+        scoresPerUser.keySet().forEach((userID) -> {
             if (scoresPerUser.get(userID).get("Fluency").get("INID_CONTROL-Worse") <= scoresPerUser.get(userID).get("Fluency").get("INID_CONTROL-Med")
                     && scoresPerUser.get(userID).get("Fluency").get("INID_CONTROL-Worse") < scoresPerUser.get(userID).get("Fluency").get("INID_CONTROL-Best")
                     && scoresPerUser.get(userID).get("Fluency").get("INID_CONTROL-Med") <= scoresPerUser.get(userID).get("Fluency").get("INID_CONTROL-Best")
@@ -2179,30 +2070,26 @@ public class ParseResultFiles {
                     unreliableUserIDsAD.add(userID);
                 }
             }
-        }
+        });
 
         ArrayList<String> instanceIDs = new ArrayList<>();
-        for (String userID : scoresPerUser.keySet()) {
-            for (String instance : scoresPerUser.get(userID).get("Fluency").keySet()) {
-                if (!instance.contains("INID_CONTROL-Worse")
-                        && !instance.contains("INID_CONTROL-Med")
-                        && !instance.contains("INID_CONTROL-Best")) {
-                    if (!instanceIDs.contains(instance)) {
+        scoresPerUser.keySet().forEach((userID) -> {
+            scoresPerUser.get(userID).get("Fluency").keySet().stream().filter((instance) -> (!instance.contains("INID_CONTROL-Worse")
+                    && !instance.contains("INID_CONTROL-Med")
+                    && !instance.contains("INID_CONTROL-Best"))).filter((instance) -> (!instanceIDs.contains(instance))).forEachOrdered((instance) -> {
                         instanceIDs.add(instance);
-                    }
-                }
-            }
-        }
+            });
+        });
         Collections.sort(instanceIDs);
 
         System.out.println("PARTICIPATING users: " + scoresPerUser.keySet().size());
-        System.out.println("UNRELIABLE: " + (((double) unreliableUserIDs.size()) / ((double) scoresPerUser.keySet().size())));
-        System.out.println("UNRELIABLE on Fluency: " + (((double) unreliableUserIDsFL.size()) / ((double) scoresPerUser.keySet().size())));
-        System.out.println("UNRELIABLE on Adequacy: " + (((double) unreliableUserIDsAD.size()) / ((double) scoresPerUser.keySet().size())));
+        System.out.println("UNRELIABLE: " + (unreliableUserIDs.size() / ((double) scoresPerUser.keySet().size())));
+        System.out.println("UNRELIABLE on Fluency: " + (unreliableUserIDsFL.size() / ((double) scoresPerUser.keySet().size())));
+        System.out.println("UNRELIABLE on Adequacy: " + (unreliableUserIDsAD.size() / ((double) scoresPerUser.keySet().size())));
         System.out.println(unreliableUserIDs);
-        for (String unreliableUserID : unreliableUserIDs) {
+        unreliableUserIDs.forEach((unreliableUserID) -> {
             scoresPerUser.remove(unreliableUserID);
-        }
+        });
         System.out.println("REMAINING users: " + scoresPerUser.keySet().size());
 
         //AGREEMENT VECTORS
@@ -2223,14 +2110,17 @@ public class ParseResultFiles {
                 }
                 if (usersOfSameInstances.size() > 1) {
                     ArrayList<String> instances = new ArrayList<>(scoresPerUser.get(userID).get("Fluency").keySet());
-                    for (String ID : usersOfSameInstances) {
+                    usersOfSameInstances.stream().map((ID) -> {
                         System.out.print("Fluency of " + ID + ":\t");
-                        for (String instance : instances) {
+                        return ID;
+                    }).map((ID) -> {
+                        instances.forEach((instance) -> {
                             System.out.print(scoresPerUser.get(ID).get("Fluency").get(instance) + "\t");
-                        }
+                        });
+                        return ID;
+                    }).forEachOrdered((_item) -> {
                         System.out.println();
-                    }
-                    System.out.println();
+                    });
                 }
             }
         }
@@ -2252,41 +2142,59 @@ public class ParseResultFiles {
                 }
                 if (usersOfSameInstances.size() > 1) {
                     ArrayList<String> instances = new ArrayList<>(scoresPerUser.get(userID).get("Adequacy").keySet());
-                    for (String ID : usersOfSameInstances) {
+                    usersOfSameInstances.stream().map((ID) -> {
                         System.out.print("Adequacy of " + ID + ":\t");
-                        for (String instance : instances) {
+                        return ID;
+                    }).map((ID) -> {
+                        instances.forEach((instance) -> {
                             System.out.print(scoresPerUser.get(ID).get("Adequacy").get(instance) + "\t");
-                        }
+                        });
+                        return ID;
+                    }).forEachOrdered((_item) -> {
                         System.out.println();
-                    }
-                    System.out.println();
+                    });
                 }
             }
         }
 
         HashMap<String, ArrayList<Integer>> scoresPerMRIDFluency = new HashMap<>();
         HashMap<String, ArrayList<Integer>> scoresPerMRIDAdequacy = new HashMap<>();
-        for (String mrID : mrsBAGELSet.keySet()) {
+        mrsBAGELSet.keySet().stream().map((mrID) -> {
             scoresPerMRIDFluency.put("LOLS_" + mrID, new ArrayList<Integer>());
+            return mrID;
+        }).map((mrID) -> {
             scoresPerMRIDFluency.put("OTHER_" + mrID, new ArrayList<Integer>());
-
+            return mrID;
+        }).map((mrID) -> {
             scoresPerMRIDAdequacy.put("LOLS_" + mrID, new ArrayList<Integer>());
+            return mrID;
+        }).forEachOrdered((mrID) -> {
             scoresPerMRIDAdequacy.put("OTHER_" + mrID, new ArrayList<Integer>());
-        }
-        for (String mrID : mrsSFHOTELSet.keySet()) {
+        });
+        mrsSFHOTELSet.keySet().stream().map((mrID) -> {
             scoresPerMRIDFluency.put("LOLS_" + mrID, new ArrayList<Integer>());
+            return mrID;
+        }).map((mrID) -> {
             scoresPerMRIDFluency.put("OTHER_" + mrID, new ArrayList<Integer>());
-
+            return mrID;
+        }).map((mrID) -> {
             scoresPerMRIDAdequacy.put("LOLS_" + mrID, new ArrayList<Integer>());
+            return mrID;
+        }).forEachOrdered((mrID) -> {
             scoresPerMRIDAdequacy.put("OTHER_" + mrID, new ArrayList<Integer>());
-        }
-        for (String mrID : mrsSFRESTSet.keySet()) {
+        });
+        mrsSFRESTSet.keySet().stream().map((mrID) -> {
             scoresPerMRIDFluency.put("LOLS_" + mrID, new ArrayList<Integer>());
+            return mrID;
+        }).map((mrID) -> {
             scoresPerMRIDFluency.put("OTHER_" + mrID, new ArrayList<Integer>());
-
+            return mrID;
+        }).map((mrID) -> {
             scoresPerMRIDAdequacy.put("LOLS_" + mrID, new ArrayList<Integer>());
+            return mrID;
+        }).forEachOrdered((mrID) -> {
             scoresPerMRIDAdequacy.put("OTHER_" + mrID, new ArrayList<Integer>());
-        }
+        });
 
         ArrayList<String> mrSUBSETFOCUS = new ArrayList<>();
         //HOTEL IN TEST BUT NOT IN TRAIN MRS
@@ -2340,7 +2248,6 @@ public class ParseResultFiles {
                         boolean isIn = false;
                         if (instance.contains("LOLS")) {
                             for (String m : evalInstanceIDToMrID_LOLS.get(instance)) {
-                                System.out.println(mrs.get(m));
                                 if (mrSUBSETFOCUS.contains(mrs.get(m))) {
                                     isIn = true;
                                 }
@@ -2431,7 +2338,7 @@ public class ParseResultFiles {
         for (String mrID : scoresPerMRIDFluency.keySet()) {
             if (mrID.startsWith("LOLS_BAGEL")) {
                 //if (!mrsUniqueLOLS.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDFluency.get(mrID)) {
                     LOLS_BAGEL_AVG_fluency += score.doubleValue();
                     LOLS_BAGEL_total_fluency++;
@@ -2440,7 +2347,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("LOLS_SFHOT")) {
                 //if (!mrsUniqueLOLS.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDFluency.get(mrID)) {
                     LOLS_SFHOT_AVG_fluency += score.doubleValue();
                     LOLS_SFHOT_total_fluency++;
@@ -2449,7 +2356,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("LOLS_SFRES")) {
                 //if (!mrsUniqueLOLS.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDFluency.get(mrID)) {
                     LOLS_SFRES_AVG_fluency += score.doubleValue();
                     LOLS_SFRES_total_fluency++;
@@ -2458,7 +2365,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("OTHER_SFHOT")) {
                 //if (!mrsUniqueOTHER.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDFluency.get(mrID)) {
                     WEN_SFHOT_AVG_fluency += score.doubleValue();
                     WEN_SFHOT_total_fluency++;
@@ -2467,7 +2374,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("OTHER_SFRES")) {
                 //if (!mrsUniqueOTHER.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDFluency.get(mrID)) {
                     WEN_SFRES_AVG_fluency += score.doubleValue();
                     WEN_SFRES_total_fluency++;
@@ -2476,7 +2383,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("OTHER_BAGEL")) {
                 //if (!mrsUniqueOTHER.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDFluency.get(mrID)) {
                     Dusek_AVG_fluency += score.doubleValue();
                     Dusek_total_fluency++;
@@ -2518,7 +2425,7 @@ public class ParseResultFiles {
         for (String mrID : scoresPerMRIDAdequacy.keySet()) {
             if (mrID.startsWith("LOLS_BAGEL")) {
                 //if (!mrsUniqueLOLS.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDAdequacy.get(mrID)) {
                     LOLS_BAGEL_AVG_adequacy += score.doubleValue();
                     LOLS_BAGEL_total_adequacy++;
@@ -2527,7 +2434,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("LOLS_SFHOT")) {
                 //if (!mrsUniqueLOLS.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDAdequacy.get(mrID)) {
                     LOLS_SFHOT_AVG_adequacy += score.doubleValue();
                     LOLS_SFHOT_total_adequacy++;
@@ -2536,7 +2443,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("LOLS_SFRES")) {
                 //if (!mrsUniqueLOLS.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueLOLS.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDAdequacy.get(mrID)) {
                     LOLS_SFRES_AVG_adequacy += score.doubleValue();
                     LOLS_SFRES_total_adequacy++;
@@ -2545,7 +2452,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("OTHER_SFHOT")) {
                 //if (!mrsUniqueOTHER.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDAdequacy.get(mrID)) {
                     WEN_SFHOT_AVG_adequacy += score.doubleValue();
                     WEN_SFHOT_total_adequacy++;
@@ -2554,7 +2461,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("OTHER_SFRES")) {
                 //if (!mrsUniqueOTHER.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDAdequacy.get(mrID)) {
                     WEN_SFRES_AVG_adequacy += score.doubleValue();
                     WEN_SFRES_total_adequacy++;
@@ -2563,7 +2470,7 @@ public class ParseResultFiles {
                 //}
             } else if (mrID.startsWith("OTHER_BAGEL")) {
                 //if (!mrsUniqueOTHER.contains(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)))) {
-                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf("_") + 1)));
+                mrsUniqueOTHER.add(mrsSet.get(mrID.substring(mrID.indexOf('_') + 1)));
                 for (Integer score : scoresPerMRIDAdequacy.get(mrID)) {
                     Dusek_AVG_adequacy += score.doubleValue();
                     Dusek_total_adequacy++;
@@ -2596,36 +2503,33 @@ public class ParseResultFiles {
         System.out.println();
 
         HashSet<String> preds = new HashSet<>();
-        for (String mr : scoresPerMRIDFluency.keySet()) {
+        scoresPerMRIDFluency.keySet().forEach((mr) -> {
             if (mr.startsWith("LOLS_SFHOT")) {
-                String mrSub = mr.substring(mr.indexOf("_") + 1);
-                preds.add(mrsSFHOTEL.get(mrSub).substring(0, mrsSFHOTEL.get(mrSub).indexOf("(")));
+                String mrSub = mr.substring(mr.indexOf('_') + 1);
+                preds.add(mrsSFHOTEL.get(mrSub).substring(0, mrsSFHOTEL.get(mrSub).indexOf('(')));
             } else if (mr.startsWith("LOLS_SFRES")) {
-                String mrSub = mr.substring(mr.indexOf("_") + 1);
-                preds.add(mrsSFREST.get(mrSub).substring(0, mrsSFREST.get(mrSub).indexOf("(")));
+                String mrSub = mr.substring(mr.indexOf('_') + 1);
+                preds.add(mrsSFREST.get(mrSub).substring(0, mrsSFREST.get(mrSub).indexOf('(')));
             }
-        }
-        for (String predicate : preds) {
+        });
+        preds.stream().map((predicate) -> {
             ArrayList<Double> LOLS_SFHOT_AVG_fluency_set_perPred = new ArrayList<>();
             ArrayList<Double> LOLS_SFRES_AVG_fluency_set_perPred = new ArrayList<>();
             ArrayList<Double> WEN_SFHOT_AVG_fluency_set_perPred = new ArrayList<>();
             ArrayList<Double> WEN_SFRES_AVG_fluency_set_perPred = new ArrayList<>();
-
             Double LOLS_SFHOT_AVG_fluency_perPred = 0.0;
             Double LOLS_SFRES_AVG_fluency_perPred = 0.0;
             Double WEN_SFHOT_AVG_fluency_perPred = 0.0;
             Double WEN_SFRES_AVG_fluency_perPred = 0.0;
-
             Double LOLS_SFHOT_total_fluency_perPred = 0.0;
             Double LOLS_SFRES_total_fluency_perPred = 0.0;
             Double WEN_SFHOT_total_fluency_perPred = 0.0;
             Double WEN_SFRES_total_fluency_perPred = 0.0;
-
             for (String instance : scoresPerMRIDFluency.keySet()) {
                 if (instance.startsWith("LOLS_SFHOT")) {
                     //if (evalInstanceIDToMrID_LOLS.get(instance) != null) {
-                    String mr = instance.substring(instance.indexOf("_") + 1);
-                    if (mrsSFHOTEL.get(mr).substring(0, mrsSFHOTEL.get(mr).indexOf("(")).equals(predicate)) {
+                    String mr = instance.substring(instance.indexOf('_') + 1);
+                    if (mrsSFHOTEL.get(mr).substring(0, mrsSFHOTEL.get(mr).indexOf('(')).equals(predicate)) {
                         for (Integer score : scoresPerMRIDFluency.get(instance)) {
                             LOLS_SFHOT_AVG_fluency_perPred += score.doubleValue();
                             LOLS_SFHOT_total_fluency_perPred++;
@@ -2635,8 +2539,8 @@ public class ParseResultFiles {
                     //}
                 } else if (instance.startsWith("LOLS_SFRES")) {
                     //if (evalInstanceIDToMrID_LOLS.get(instance) != null) {
-                    String mr = instance.substring(instance.indexOf("_") + 1);
-                    if (mrsSFREST.get(mr).substring(0, mrsSFREST.get(mr).indexOf("(")).equals(predicate)) {
+                    String mr = instance.substring(instance.indexOf('_') + 1);
+                    if (mrsSFREST.get(mr).substring(0, mrsSFREST.get(mr).indexOf('(')).equals(predicate)) {
                         for (Integer score : scoresPerMRIDFluency.get(instance)) {
                             LOLS_SFRES_AVG_fluency_perPred += score.doubleValue();
                             LOLS_SFRES_total_fluency_perPred++;
@@ -2646,8 +2550,8 @@ public class ParseResultFiles {
                     //}
                 } else if (instance.startsWith("OTHER_SFHOT")) {
                     // if (evalInstanceIDToMrID_OTHER.get(instance) != null) {
-                    String mr = instance.substring(instance.indexOf("_") + 1);
-                    if (mrsSFHOTEL.get(mr).substring(0, mrsSFHOTEL.get(mr).indexOf("(")).equals(predicate)) {
+                    String mr = instance.substring(instance.indexOf('_') + 1);
+                    if (mrsSFHOTEL.get(mr).substring(0, mrsSFHOTEL.get(mr).indexOf('(')).equals(predicate)) {
                         for (Integer score : scoresPerMRIDFluency.get(instance)) {
                             WEN_SFHOT_AVG_fluency_perPred += score.doubleValue();
                             WEN_SFHOT_total_fluency_perPred++;
@@ -2657,8 +2561,8 @@ public class ParseResultFiles {
                     //}
                 } else if (instance.startsWith("OTHER_SFRES")) {
                     //if (evalInstanceIDToMrID_OTHER.get(instance) != null) {
-                    String mr = instance.substring(instance.indexOf("_") + 1);
-                    if (mrsSFREST.get(mr).substring(0, mrsSFREST.get(mr).indexOf("(")).equals(predicate)) {
+                    String mr = instance.substring(instance.indexOf('_') + 1);
+                    if (mrsSFREST.get(mr).substring(0, mrsSFREST.get(mr).indexOf('(')).equals(predicate)) {
                         for (Integer score : scoresPerMRIDFluency.get(instance)) {
                             WEN_SFRES_AVG_fluency_perPred += score.doubleValue();
                             WEN_SFRES_total_fluency_perPred++;
@@ -2672,27 +2576,23 @@ public class ParseResultFiles {
             LOLS_SFRES_AVG_fluency_perPred /= LOLS_SFRES_total_fluency_perPred;
             WEN_SFHOT_AVG_fluency_perPred /= WEN_SFHOT_total_fluency_perPred;
             WEN_SFRES_AVG_fluency_perPred /= WEN_SFRES_total_fluency_perPred;
-
             ArrayList<Double> LOLS_SFHOT_AVG_adequacy_set_perPred = new ArrayList<>();
             ArrayList<Double> LOLS_SFRES_AVG_adequacy_set_perPred = new ArrayList<>();
             ArrayList<Double> WEN_SFHOT_AVG_adequacy_set_perPred = new ArrayList<>();
             ArrayList<Double> WEN_SFRES_AVG_adequacy_set_perPred = new ArrayList<>();
-
             Double LOLS_SFHOT_AVG_adequacy_perPred = 0.0;
             Double LOLS_SFRES_AVG_adequacy_perPred = 0.0;
             Double WEN_SFHOT_AVG_adequacy_perPred = 0.0;
             Double WEN_SFRES_AVG_adequacy_perPred = 0.0;
-
             Double LOLS_SFHOT_total_adequacy_perPred = 0.0;
             Double LOLS_SFRES_total_adequacy_perPred = 0.0;
             Double WEN_SFHOT_total_adequacy_perPred = 0.0;
             Double WEN_SFRES_total_adequacy_perPred = 0.0;
-
             for (String instance : scoresPerMRIDAdequacy.keySet()) {
                 if (instance.startsWith("LOLS_SFHOT")) {
                     //if (evalInstanceIDToMrID_LOLS.get(instance) != null) {
-                    String mr = instance.substring(instance.indexOf("_") + 1);
-                    if (mrsSFHOTEL.get(mr).substring(0, mrsSFHOTEL.get(mr).indexOf("(")).equals(predicate)) {
+                    String mr = instance.substring(instance.indexOf('_') + 1);
+                    if (mrsSFHOTEL.get(mr).substring(0, mrsSFHOTEL.get(mr).indexOf('(')).equals(predicate)) {
                         for (Integer score : scoresPerMRIDAdequacy.get(instance)) {
                             LOLS_SFHOT_AVG_adequacy_perPred += score.doubleValue();
                             LOLS_SFHOT_total_adequacy_perPred++;
@@ -2702,8 +2602,8 @@ public class ParseResultFiles {
                     //}
                 } else if (instance.startsWith("LOLS_SFRES")) {
                     //if (evalInstanceIDToMrID_LOLS.get(instance) != null) {
-                    String mr = instance.substring(instance.indexOf("_") + 1);
-                    if (mrsSFREST.get(mr).substring(0, mrsSFREST.get(mr).indexOf("(")).equals(predicate)) {
+                    String mr = instance.substring(instance.indexOf('_') + 1);
+                    if (mrsSFREST.get(mr).substring(0, mrsSFREST.get(mr).indexOf('(')).equals(predicate)) {
                         for (Integer score : scoresPerMRIDAdequacy.get(instance)) {
                             LOLS_SFRES_AVG_adequacy_perPred += score.doubleValue();
                             LOLS_SFRES_total_adequacy_perPred++;
@@ -2713,8 +2613,8 @@ public class ParseResultFiles {
                     //}
                 } else if (instance.startsWith("OTHER_SFHOT")) {
                     //if (evalInstanceIDToMrID_OTHER.get(instance) != null) {
-                    String mr = instance.substring(instance.indexOf("_") + 1);
-                    if (mrsSFHOTEL.get(mr).substring(0, mrsSFHOTEL.get(mr).indexOf("(")).equals(predicate)) {
+                    String mr = instance.substring(instance.indexOf('_') + 1);
+                    if (mrsSFHOTEL.get(mr).substring(0, mrsSFHOTEL.get(mr).indexOf('(')).equals(predicate)) {
                         for (Integer score : scoresPerMRIDAdequacy.get(instance)) {
                             WEN_SFHOT_AVG_adequacy_perPred += score.doubleValue();
                             WEN_SFHOT_total_adequacy_perPred++;
@@ -2724,8 +2624,8 @@ public class ParseResultFiles {
                     //}
                 } else if (instance.startsWith("OTHER_SFRES")) {
                     //if (evalInstanceIDToMrID_OTHER.get(instance) != null) {
-                    String mr = instance.substring(instance.indexOf("_") + 1);
-                    if (mrsSFREST.get(mr).substring(0, mrsSFREST.get(mr).indexOf("(")).equals(predicate)) {
+                    String mr = instance.substring(instance.indexOf('_') + 1);
+                    if (mrsSFREST.get(mr).substring(0, mrsSFREST.get(mr).indexOf('(')).equals(predicate)) {
                         for (Integer score : scoresPerMRIDAdequacy.get(instance)) {
                             WEN_SFRES_AVG_adequacy_perPred += score.doubleValue();
                             WEN_SFRES_total_adequacy_perPred++;
@@ -2739,7 +2639,6 @@ public class ParseResultFiles {
             LOLS_SFRES_AVG_adequacy_perPred /= LOLS_SFRES_total_adequacy_perPred;
             WEN_SFHOT_AVG_adequacy_perPred /= WEN_SFHOT_total_adequacy_perPred;
             WEN_SFRES_AVG_adequacy_perPred /= WEN_SFRES_total_adequacy_perPred;
-
             System.out.println();
             System.out.println("PREDICATE: " + predicate);
             System.out.println("SF HOTEL\tLOLS\tWen");
@@ -2749,13 +2648,15 @@ public class ParseResultFiles {
             System.out.println("SF REST\tLOLS\tWen");
             System.out.println("Fluency\t" + LOLS_SFRES_AVG_fluency_perPred + "(" + getConf(LOLS_SFRES_AVG_fluency_set_perPred, LOLS_SFRES_AVG_fluency_perPred, LOLS_SFRES_total_fluency_perPred) + ")" + "\t" + WEN_SFRES_AVG_fluency_perPred + "(" + getConf(WEN_SFRES_AVG_fluency_set_perPred, WEN_SFRES_AVG_fluency_perPred, WEN_SFRES_total_fluency_perPred) + ")");
             System.out.println("Adequacy\t" + LOLS_SFRES_AVG_adequacy_perPred + "(" + getConf(LOLS_SFRES_AVG_adequacy_set_perPred, LOLS_SFRES_AVG_adequacy_perPred, LOLS_SFRES_total_adequacy_perPred) + ")" + "\t" + WEN_SFRES_AVG_adequacy_perPred + "(" + getConf(WEN_SFRES_AVG_adequacy_set_perPred, WEN_SFRES_AVG_adequacy_perPred, WEN_SFRES_total_adequacy_perPred) + ")");
+            return predicate;
+        }).forEachOrdered((_item) -> {
             System.out.println();
-        }
+        });
 
         HashSet<String> uniqueMRs = new HashSet<>();
         int maxSize = 0;
         for (String mrID : scoresPerMRIDFluency.keySet()) {
-            String id = mrID.substring(mrID.indexOf("_") + 1);
+            String id = mrID.substring(mrID.indexOf('_') + 1);
             String instanceID = "";
             for (String iID : instanceIDs) {
                 if (mrID.contains("LOLS")
@@ -2793,19 +2694,14 @@ public class ParseResultFiles {
                     System.out.print(text + "\t");
                     for (int i = 0; i < 26; i++) {
                         if (i < scores_F.size()) {
-                            System.out.print(scores_F.get(i) + "\t");
                         } else {
-                            System.out.print("\t");
                         }
                     }
                     for (int i = 0; i < 26; i++) {
                         if (i < scores_A.size()) {
-                            System.out.print(scores_A.get(i) + "\t");
                         } else {
-                            System.out.print("\t");
                         }
                     }
-                    System.out.println();
                 }
                 if (scores_F.size() > maxSize) {
                     maxSize = scores_F.size();
@@ -2815,7 +2711,6 @@ public class ParseResultFiles {
                 }
             }
         }
-        System.out.println(maxSize);
         /*HashSet<String> uniqueMRs = new HashSet<>();
         int maxSize = 0;
         for (String instanceID : instanceIDs) {
@@ -2949,394 +2844,41 @@ public class ParseResultFiles {
         }
         }*/
         HashMap<String, ArrayList<Integer>> perSystemFluency = new HashMap<>();
-        for (String instance : scoresPerMRIDFluency.keySet()) {
-        String system = instance.substring(0, instance.indexOf("-"));
-        if (!perSystemFluency.containsKey(system)) {
-        perSystemFluency.put(system, new ArrayList<Integer>());
-        }
-        perSystemFluency.get(system).addAll(scoresPerMRIDFluency.get(instance));
-        }
+        scoresPerMRIDFluency.keySet().forEach((instance) -> {
+            String system = instance.substring(0, instance.indexOf('-'));
+            if (!perSystemFluency.containsKey(system)) {
+                perSystemFluency.put(system, new ArrayList<Integer>());
+            }   perSystemFluency.get(system).addAll(scoresPerMRIDFluency.get(instance));
+        });
         HashMap<String, ArrayList<Integer>> perSystemAdequacy = new HashMap<>();
-        for (String instance : scoresPerMRIDAdequacy.keySet()) {
-        String system = instance.substring(0, instance.indexOf("-"));
-        if (!perSystemAdequacy.containsKey(system)) {
-        perSystemAdequacy.put(system, new ArrayList<Integer>());
-        }
-        perSystemAdequacy.get(system).addAll(scoresPerMRIDAdequacy.get(instance));
-        }
-        for (String system : perSystemFluency.keySet()) {
-        System.out.print("FLUENCY " + system + "\t");
-        for (Integer i : perSystemFluency.get(system)) {
-        System.out.print(i + "\t");
-        }
-        System.out.println();
-        }
-        for (String system : perSystemAdequacy.keySet()) {
-        System.out.print("ADEQUACY " + system + "\t");
-        for (Integer i : perSystemAdequacy.get(system)) {
-        System.out.print(i + "\t");
-        }
-        System.out.println();
-        }
-
-        /*HashMap<String, HashMap<String, ArrayList<Integer>>> perInstancePerSystemFluency = new HashMap<>();
-        for (String instance : scoresPerMRIDFluency.keySet()) {
-        String inID = instance.substring(instance.indexOf("_") + 1);
-        String system = instance.substring(0, instance.indexOf("_"));
-        if (!perInstancePerSystemFluency.containsKey(inID)) {
-        perInstancePerSystemFluency.put(inID, new HashMap<String, ArrayList<Integer>>());
-        }
-        perInstancePerSystemFluency.get(inID).put(system, scoresPerMRIDFluency.get(instance));
-        }
-        HashMap<String, HashMap<String, ArrayList<Integer>>> perInstancePerSystemAdequacy = new HashMap<>();
-        for (String instance : scoresPerMRIDAdequacy.keySet()) {
-        String inID = instance.substring(instance.indexOf("_") + 1);
-        String system = instance.substring(0, instance.indexOf("_"));
-        if (!perInstancePerSystemAdequacy.containsKey(inID)) {
-        perInstancePerSystemAdequacy.put(inID, new HashMap<String, ArrayList<Integer>>());
-        }
-        perInstancePerSystemAdequacy.get(inID).put(system, scoresPerMRIDAdequacy.get(instance));
-        }
-        System.out.println(perInstancePerSystemFluency);
-        System.out.println(perInstancePerSystemAdequacy);*/
-
-        /*int limit = 30;
-        String overAllTitle = "";
-        ArrayList<String> outs = new ArrayList<>();
-        HashSet<String> emptyIDsLOLS = new HashSet<>();
-        HashSet<String> emptyIDsOTHER = new HashSet<>();
-        HashSet<String> emptyFluencyIDsLOLS = new HashSet<>();
-        HashSet<String> emptyFluencyIDsOTHER = new HashSet<>();
-        HashSet<String> emptyInfoIDsLOLS = new HashSet<>();
-        HashSet<String> emptyInfoIDsOTHER = new HashSet<>();
-        
-        HashSet<String> twoFluencyIDsLOLS = new HashSet<>();
-        HashSet<String> twoFluencyIDsOTHER = new HashSet<>();
-        HashSet<String> twoInfoIDsLOLS = new HashSet<>();
-        HashSet<String> twoInfoIDsOTHER = new HashSet<>();
-        
-        HashSet<String> oneFluencyIDsLOLS = new HashSet<>();
-        HashSet<String> oneFluencyIDsOTHER = new HashSet<>();
-        HashSet<String> oneInfoIDsLOLS = new HashSet<>();
-        HashSet<String> oneInfoIDsOTHER = new HashSet<>();
-        for (String instanceID : instanceIDs) {
-        String id = "";
-        if (instanceID.contains("LOLS")) {
-        String mr = "";
-        for (String m : evalInstanceIDToMrID_LOLS.get(instanceID)) {
-        mr = m;
-        }
-        id = "LOLS_" + mr;
-        } else {
-        String mr = "";
-        for (String m : evalInstanceIDToMrID_OTHER.get(instanceID)) {
-        mr = m;
-        }
-        id = "OTHER_" + mr;
-        }
-        String title = "ID\t";
-        String out = id + "\t";
-        
-        int fluencyCountsLOLS = 0;
-        int fluencyCountsOTHER = 0;
-        int infoCountsLOLS = 0;
-        int infoCountsOTHER = 0;
-        String idMod = id.substring(id.indexOf("_") + 1);
-        if (perInstancePerSystemFluency.containsKey(idMod)) {
-        boolean other = false;
-        ArrayList<String> keys = new ArrayList<>();
-        if (perInstancePerSystemFluency.get(idMod).keySet().contains("LOLS")) {
-        keys.add("LOLS");
-        }
-        for (String key : perInstancePerSystemFluency.get(idMod).keySet()) {
-        if (!keys.contains(key)) {
-        keys.add(key);
-        }
-        }
-        if (!keys.contains("LOLS")) {
-        int count = 1;
-        for (; count <= limit; count++) {
-        title += "LOLS fluency " + count + "\t";
-        out += "\t";
-        }
-        }
-        for (String system : keys) {
-        String sysStr = "LOLS";
-        if (!system.equals("LOLS")) {
-        sysStr = "OTHER";
-        other = true;
-        }
-        int count = 1;
-        for (Integer f : perInstancePerSystemFluency.get(idMod).get(system)) {
-        title += sysStr + " fluency " + count + "\t";
-        out += f + "\t";
-        if (!other) {
-        fluencyCountsLOLS++;
-        } else {
-        fluencyCountsOTHER++;
-        }
-        count++;
-        }
-        for (; count <= limit; count++) {
-        title += sysStr + " fluency " + count + "\t";
-        out += "\t";
-        }
-        }
-        if (!other) {
-        int count = 1;
-        for (; count <= limit; count++) {
-        title += "OTHER fluency " + count + "\t";
-        out += "\t";
-        }
-        }
-        } else {
-        int count = 1;
-        for (; count <= limit; count++) {
-        title += "LOLS fluency " + count + "\t";
-        out += "\t";
-        }
-        count = 1;
-        for (; count <= limit; count++) {
-        title += "OTHER fluency " + count + "\t";
-        out += "\t";
-        }
-        }
-        if (perInstancePerSystemAdequacy.containsKey(idMod)) {
-        boolean other = false;
-        ArrayList<String> keys = new ArrayList<>();
-        if (perInstancePerSystemAdequacy.get(idMod).keySet().contains("LOLS")) {
-        keys.add("LOLS");
-        }
-        for (String key : perInstancePerSystemAdequacy.get(idMod).keySet()) {
-        if (!keys.contains(key)) {
-        keys.add(key);
-        }
-        }
-        if (!keys.contains("LOLS")) {
-        int count = 1;
-        for (; count <= limit; count++) {
-        title += "LOLS informativeness " + count + "\t";
-        out += "\t";
-        }
-        }
-        for (String system : keys) {
-        String sysStr = "LOLS";
-        if (!system.equals("LOLS")) {
-        sysStr = "OTHER";
-        other = true;
-        }
-        int count = 1;
-        for (Integer f : perInstancePerSystemAdequacy.get(idMod).get(system)) {
-        title += sysStr + " informativeness " + count + "\t";
-        out += f + "\t";
-        if (!other) {
-        infoCountsLOLS++;
-        } else {
-        infoCountsOTHER++;
-        }
-        count++;
-        }
-        for (; count <= limit; count++) {
-        title += sysStr + " informativeness " + count + "\t";
-        out += "\t";
-        }
-        }
-        if (!other) {
-        int count = 1;
-        for (; count <= limit; count++) {
-        title += "OTHER informativeness " + count + "\t";
-        out += "\t";
-        }
-        }
-        } else {
-        int count = 1;
-        for (; count <= limit; count++) {
-        title += "LOLS informativeness " + count + "\t";
-        out += "\t";
-        }
-        count = 1;
-        for (; count <= limit; count++) {
-        title += "OTHER informativeness " + count + "\t";
-        out += "\t";
-        }
-        }
-        if (overAllTitle.isEmpty()) {
-        overAllTitle = title;
-        }
-        if (!overAllTitle.equals(title)) {
-        System.out.println(overAllTitle);
-        System.out.println(title);
-        System.out.println("WTF");
-        System.exit(0);
-        }
-        outs.add(out);
-        
-        if (id.contains("LOLS")) {
-        if (fluencyCountsLOLS == 0
-        && infoCountsLOLS == 0) {
-        emptyIDsLOLS.add(id);
-        }
-        if (fluencyCountsLOLS == 0) {
-        emptyFluencyIDsLOLS.add(id);
-        }
-        if (infoCountsLOLS == 0) {
-        emptyInfoIDsLOLS.add(id);
-        }
-        if (fluencyCountsLOLS <= 1) {
-        oneFluencyIDsLOLS.add(id);
-        }
-        if (infoCountsLOLS <= 1) {
-        oneInfoIDsLOLS.add(id);
-        }
-        if (fluencyCountsLOLS <= 2) {
-        twoFluencyIDsLOLS.add(id);
-        }
-        if (infoCountsLOLS <= 2) {
-        twoInfoIDsLOLS.add(id);
-        }
-        } else {
-        if (fluencyCountsOTHER == 0
-        && infoCountsOTHER == 0) {
-        emptyIDsOTHER.add(id);
-        }
-        if (fluencyCountsOTHER == 0) {
-        emptyFluencyIDsOTHER.add(id);
-        }
-        if (infoCountsOTHER == 0) {
-        emptyInfoIDsOTHER.add(id);
-        }
-        if (fluencyCountsOTHER <= 1) {
-        oneFluencyIDsOTHER.add(id);
-        }
-        if (infoCountsOTHER <= 1) {
-        oneInfoIDsOTHER.add(id);
-        }
-        if (fluencyCountsOTHER <= 2) {
-        twoFluencyIDsOTHER.add(id);
-        }
-        if (infoCountsOTHER <= 2) {
-        twoInfoIDsOTHER.add(id);
-        }
-        }
-        }
-        System.out.println(overAllTitle);
-        for (String out : outs) {
-        System.out.println(out);
-        }
-        System.out.println("------------------");
-        System.out.println("emptyIDsLOLS: " + emptyIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("emptyIDsOTHER: " + emptyIDsOTHER);
-        System.out.println("------------------");
-        System.out.println("emptyFluencyIDsLOLS: " + emptyFluencyIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("emptyFluencyIDsOTHER: " + emptyFluencyIDsOTHER);
-        System.out.println("------------------");
-        System.out.println("emptyInfoIDsLOLS: " + emptyInfoIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("emptyInfoIDsOTHER: " + emptyInfoIDsOTHER);
-        System.out.println("------------------");
-        
-        System.out.println("oneFluencyIDsLOLS: " + oneFluencyIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("oneFluencyIDsOTHER: " + oneFluencyIDsOTHER);
-        System.out.println("------------------");
-        System.out.println("oneInfoIDsLOLS: " + oneInfoIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("oneInfoIDsOTHER: " + oneInfoIDsOTHER);
-        System.out.println("------------------");
-        
-        /*System.out.println("twoFluencyIDsLOLS: " + twoFluencyIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("twoFluencyIDsOTHER: " + twoFluencyIDsOTHER);
-        System.out.println("------------------");
-        System.out.println("twoInfoIDsLOLS: " + twoInfoIDsLOLS);
-        System.out.println("------------------");
-        System.out.println("twoInfoIDsOTHER: " + twoInfoIDsOTHER);
-        System.out.println("------------------");
-        ArrayList<String> redoInstances = new ArrayList<>();
-        for (String instanceID : instanceIDs) {
-        String id = "";
-        if (instanceID.contains("LOLS")) {
-        String mr = "";
-        for (String m : evalInstanceIDToMrID_LOLS.get(instanceID)) {
-        mr = m;
-        }
-        id = "LOLS_" + mr;
-        } else {
-        String mr = "";
-        for (String m : evalInstanceIDToMrID_OTHER.get(instanceID)) {
-        mr = m;
-        }
-        id = "OTHER_" + mr;
-        }
-        String modId = instanceID.substring(5, instanceID.indexOf("-"));
-        String no = instanceID.substring(instanceID.indexOf("-") + 1).trim();
-        /*if (no.length() == 1) {
-        no = "00" + no;
-        } else if (no.length() == 2) {
-        no = "0" + no;
-        }*//*
-        modId += "\t" + no;
-        
-        if (id.contains("LOLS")) {
-        String modIDLOLS = modId;
-        String MRID = id.substring(id.indexOf("_") + 1);
-        String mr = "";
-        String text = textsPerEvalInstanceID.get(id);
-        if (id.contains("SFRES")) {
-        mr = mrsSFREST.get(MRID);
-        } else if (id.contains("SFHOT")) {
-        mr = mrsSFHOTEL.get(MRID);
-        } else if (id.contains("BAGEL")) {
-        mr = mrsBAGEL.get(MRID);
-        }
-        String outLOLS = "" + modIDLOLS + "\t" + mr + "\t" + text + "\t";
-        if (oneFluencyIDsLOLS.contains(id) || oneInfoIDsLOLS.contains(id)) {
-        if (oneFluencyIDsLOLS.contains(id)) {
-        outLOLS += "0\t";
-        } else {
-        outLOLS += "10\t";
-        }
-        if (oneInfoIDsLOLS.contains(id)) {
-        outLOLS += "0\t";
-        } else {
-        outLOLS += "10\t";
-        }
-        redoInstances.add(outLOLS);
-        }
-        } else {
-        String modIDOTHER = modId;
-        String MRID = id.substring(id.indexOf("_") + 1);
-        String mr = "";
-        String text = textsPerEvalInstanceID.get(id);
-        if (id.contains("SFRES")) {
-        mr = mrsSFREST.get(MRID);
-        } else if (id.contains("SFHOT")) {
-        mr = mrsSFHOTEL.get(MRID);
-        } else if (id.contains("BAGEL")) {
-        mr = mrsBAGEL.get(MRID);
-        }
-        String outOTHER = "" + modIDOTHER + "\t" + mr + "\t" + text + "\t";
-        if (oneFluencyIDsOTHER.contains(id) || oneInfoIDsOTHER.contains(id)) {
-        if (oneFluencyIDsOTHER.contains(id)) {
-        outOTHER += "0\t";
-        } else {
-        outOTHER += "10\t";
-        }
-        if (oneInfoIDsOTHER.contains(id)) {
-        outOTHER += "0\t";
-        } else {
-        outOTHER += "10\t";
-        }
-        redoInstances.add(outOTHER);
-        }
-        }
-        }
-        Collections.sort(redoInstances);
-        for (String out : redoInstances) {
-        System.out.println(out);
-        }*/
+        scoresPerMRIDAdequacy.keySet().forEach((instance) -> {
+            String system = instance.substring(0, instance.indexOf('-'));
+            if (!perSystemAdequacy.containsKey(system)) {
+                perSystemAdequacy.put(system, new ArrayList<Integer>());
+            }   perSystemAdequacy.get(system).addAll(scoresPerMRIDAdequacy.get(instance));
+        });
+        perSystemFluency.keySet().stream().map((system) -> {
+            System.out.print("FLUENCY " + system + "\t");
+            return system;
+        }).map((system) -> {
+            perSystemFluency.get(system).forEach((i) -> {
+                System.out.print(i + "\t");
+            });
+            return system;
+        }).forEachOrdered((_item) -> {
+            System.out.println();
+        });
+        perSystemAdequacy.keySet().stream().map((system) -> {
+            System.out.print("ADEQUACY " + system + "\t");
+            return system;
+        }).map((system) -> {
+            perSystemAdequacy.get(system).forEach((i) -> {
+                System.out.print(i + "\t");
+            });
+            return system;
+        }).forEachOrdered((_item) -> {
+            System.out.println();
+        });
     }
 
     /**
@@ -3346,10 +2888,8 @@ public class ParseResultFiles {
      * @return
      */
     public static boolean containsID(String id, HashSet<String> set) {
-        for (String s : set) {
-            if (s.contains(id)) {
-                return true;
-            }
+        if (set.stream().anyMatch((s) -> (s.contains(id)))) {
+            return true;
         }
         return false;
     }
@@ -3363,11 +2903,9 @@ public class ParseResultFiles {
      */
     public static Double getConf(ArrayList<Double> values, Double avg, Double total) {
         Double variance = 0.0;
-        for (Double v : values) {
-            variance += Math.pow(avg - v, 2);
-        }
+        variance = values.stream().map((v) -> Math.pow(avg - v, 2)).reduce(variance, (accumulator, _item) -> accumulator + _item);
         variance /= total;
-        if (variance.doubleValue() == 0.0) {
+        if (variance == 0.0) {
             return 0.0;
         }
         Double stDev = Math.sqrt(variance);
@@ -3428,10 +2966,10 @@ public class ParseResultFiles {
                 if (s.startsWith("DA")) {
                     inGen = false;
                     inRef = false;
-                    da = s.substring(s.indexOf(":") + 1).trim();
+                    da = s.substring(s.indexOf(':') + 1).trim();
 
-                    String MRstr = s.substring(s.indexOf(":") + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
-                    predicate = MRstr.substring(0, MRstr.indexOf("("));
+                    String MRstr = s.substring(s.indexOf(':') + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
+                    predicate = MRstr.substring(0, MRstr.indexOf('('));
                     abstractMR = predicate + ":";
                     String attributesStr = MRstr.substring(MRstr.indexOf('(') + 1, MRstr.length() - 1);
                     attributeValues = new HashMap<>();
@@ -3440,7 +2978,6 @@ public class ParseResultFiles {
 
                         String[] args = attributesStr.split(";");
                         if (attributesStr.contains("|")) {
-                            System.out.println(attributesStr);
                             System.exit(0);
                         }
                         for (String arg : args) {
@@ -3491,7 +3028,6 @@ public class ParseResultFiles {
                                 value = "x" + index;
                             }
                             if (value.isEmpty()) {
-                                System.out.println("EMPTY VALUE");
                                 System.exit(0);
                             }
 
@@ -3501,7 +3037,6 @@ public class ParseResultFiles {
                             if (attributeValues.get(attr).contains("yes")
                                     && attributeValues.get(attr).contains("no")) {
                                 System.out.println(MRstr);
-                                System.out.println(attributeValues);
                                 System.exit(0);
                             }
                         }
@@ -3611,18 +3146,18 @@ public class ParseResultFiles {
                                             } else if (value.contains(" or ")) {
                                                 values = value.split(" or ");
                                             }
-                                            for (int v = 0; v < values.length; v++) {
-                                                if (!ref.contains(" " + values[v] + " ")) {
+                                            for (String value1 : values) {
+                                                if (!ref.contains(" " + value1 + " ")) {
                                                     /*System.out.println(ref);
                                                     System.out.println(attr);
                                                     System.out.println(value);
                                                     System.out.println(values[v]);
                                                     System.out.println(attrValuePriorities);*/
                                                 } else {
-                                                    ref = ref.replace(" " + values[v] + " ", " " + Action.TOKEN_X + attr + "_" + xCounts.get(attr) + " ");
+                                                    ref = ref.replace(" " + value1 + " ", " " + Action.TOKEN_X + attr + "_" + xCounts.get(attr) + " ");
                                                     ref = ref.replaceAll("  ", " ");
                                                     delexAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + xCounts.get(attr));
-                                                    delexMap.put(Action.TOKEN_X + attr + "_" + xCounts.get(attr), values[v]);
+                                                    delexMap.put(Action.TOKEN_X + attr + "_" + xCounts.get(attr), value1);
                                                     xCounts.put(attr, xCounts.get(attr) + 1);
                                                 }
                                             }
@@ -3646,9 +3181,7 @@ public class ParseResultFiles {
 
                             ArrayList<String> values = new ArrayList<>(delexAttributeValues.get(attr));
                             Collections.sort(values);
-                            for (String value : values) {
-                                abstractMR += value + ",";
-                            }
+                            abstractMR = values.stream().map((value) -> value + ",").reduce(abstractMR, String::concat);
                             abstractMR += "}";
                         }
                         if (abstractMR.equals("inform:address={@x@address_0,}name={@x@name_0,}phone={@x@phone_0,}pricerange={moderate,}")) {
@@ -3756,7 +3289,7 @@ public class ParseResultFiles {
                                 total++;
                             }
                         }
-                        double err = 1.0 - ((double) mentioned / (double) total);
+                        double err = 1.0 - (mentioned / (double) total);
                         if (Double.isNaN(err)) {
                             err = 0.0;
                         }
@@ -3792,15 +3325,29 @@ public class ParseResultFiles {
                 }
             }
             double avgErr = 0.0;
-            for (double err : attrCoverage.values()) {
-                avgErr += err;
-            }
-            avgErr = avgErr / (double) attrCoverage.size();
+            avgErr = attrCoverage.values().stream().map((err) -> err).reduce(avgErr, (accumulator, _item) -> accumulator + _item);
+            avgErr /= attrCoverage.size();
             System.out.println(finalReferences.size() + "\t" + generations.size() + "\t" + attrCoverage.size());
             BLEUMetric BLEU = new BLEUMetric(finalReferences, 4, false);
             NISTMetric NIST = new NISTMetric(finalReferences);
             System.out.println("BLEU: \t" + BLEU.score(generations));
-
+            /*double avgRougeScore = 0.0;
+            for (String predictedString : allPredictedWordSequences) {
+            double maxRouge = 0.0;
+            if (!finalReferencesWordSequences.containsKey(predictedString)) {
+            System.out.println(predictedString);
+            System.out.println(finalReferencesWordSequences);
+            }
+            String predictedWordSequence = predictedString.replaceAll("\\?", " \\? ").replaceAll(":", " : ").replaceAll("\\.", " \\. ").replaceAll(",", " , ").replaceAll("  ", " ").trim();
+            for (String ref : finalReferencesWordSequences.get(predictedString)) {
+            double rouge = Rouge.ROUGE_N(predictedWordSequence, ref, 4);
+            if (rouge > maxRouge) {
+            maxRouge = rouge;
+            }
+            }
+            avgRougeScore += maxRouge;
+            }
+            System.out.println("ROUGE: \t" + (avgRougeScore / (double) allPredictedWordSequences.size()));*/
             /*double avgRougeScore = 0.0;
             for (String predictedString : allPredictedWordSequences) {
             double maxRouge = 0.0;
@@ -3820,6 +3367,7 @@ public class ParseResultFiles {
             }
             System.out.println("ROUGE: \t" + (avgRougeScore / (double) allPredictedWordSequences.size()));*/
             System.out.println("NIST: \t" + NIST.score(generations));
+            //System.out.println(daToGen);
             System.out.println("ERR: \t" + avgErr);
             //System.out.println(daToGen);
 
@@ -3886,6 +3434,8 @@ public class ParseResultFiles {
             System.out.println("UNIQUE WORD ALL PRED COVERAGE ERROR: \t" + (1.0 - uniqueAllPredWordCOVERAGEERR));
             System.out.println("UNIQUE WORD ALL PRED BRC: \t" + uniqueAllPredWordBRC);
             System.out.println("TOTAL SET SIZE: \t" + abstractMRList.size());
+            //System.out.println(abstractMRList);
+            //System.out.println(detailedRes);
             //System.out.println(abstractMRList);  
             //System.out.println(detailedRes);
             System.out.println("///////////////////");
@@ -3953,7 +3503,6 @@ public class ParseResultFiles {
                 System.out.println("UNIQUE WORD " + pred + " BRC: \t" + uniquePredWordBRC);
                 System.out.println(pred + " SET SIZE: \t" + abstractMRList.size());
                 //System.out.println(detailedRes);
-                System.out.println("///////////////////");
             }
 
             System.out.println("///////--LOLS--//////");
@@ -4220,7 +3769,7 @@ public class ParseResultFiles {
                 //da = arr[1].trim();
                 //abstractMRtoMR.put(abstractMR, da);
                 abstractMRtoText.put(abstractMR, predictedWordSequence);
-                predicate = abstractMR.substring(0, abstractMR.indexOf(":"));
+                predicate = abstractMR.substring(0, abstractMR.indexOf(':'));
 
                 for (int i = 0; i < staticAbstractMRCounts.get(abstractMR); i++) {
                     String abstractMRCounted = abstractMR;
@@ -4320,7 +3869,6 @@ public class ParseResultFiles {
                     referencesStringsL = staticReferencesStrings.get(abstractMR);
                     if (referencesL == null) {
                         System.out.println(abstractMR);
-                        System.out.println(staticReferences.keySet());
                     }
                     //for (int j = 0; j < gens; j++) {
                     finalReferencesL.add(referencesL);
@@ -4334,6 +3882,24 @@ public class ParseResultFiles {
             System.out.println("BLEU_LOLS: \t" + BLEU_L.score(generationsL));
 
             double avgRougeScore = 0.0;
+            /*for (String predictedString : allPredictedWordSequences) {
+            double maxRouge = 0.0;
+            if (!finalReferencesWordSequences.containsKey(predictedString)) {
+            System.out.println(predictedString);
+            System.out.println(finalReferencesWordSequences);
+            }
+            String predictedWordSequence = predictedString.replaceAll("\\?", " \\? ").replaceAll(":", " : ").replaceAll("\\.", " \\. ").replaceAll(",", " , ").replaceAll("  ", " ").trim();
+            for (String ref : finalReferencesWordSequences.get(predictedString)) {
+            double rouge = Rouge.ROUGE_N(predictedWordSequence, ref, 4);
+            if (rouge > maxRouge) {
+            maxRouge = rouge;
+            }
+            }
+            avgRougeScore += maxRouge;
+            }
+            System.out.println("ROUGE_L: \t" + (avgRougeScore / (double) allPredictedWordSequences.size()));*/
+            //System.out.println("ERR_L: \t" + avgErr);
+            //System.out.println(daToGen);
             /*for (String predictedString : allPredictedWordSequences) {
             double maxRouge = 0.0;
             if (!finalReferencesWordSequences.containsKey(predictedString)) {
@@ -4412,7 +3978,6 @@ public class ParseResultFiles {
             System.out.println("TOTAL SET SIZE: \t" + abstractMRList_L.size());
             //System.out.println(abstractMRList);  
             //System.out.println(detailedRes);
-            System.out.println("///////////////////");
 
             ////////////////////////
             for (String pred : predictedWordSequences_perPredicatesL.keySet()) {
@@ -4475,9 +4040,10 @@ public class ParseResultFiles {
                 System.out.println("UNIQUE WORD " + pred + " ROUGE_LOLS: \t" + uniquePredWordROUGE);
                 //System.out.println("UNIQUE WORD " + pred + " COVERAGE ERROR: \t" + (1.0 - uniquePredWordCOVERAGEERR));
                 //System.out.println("UNIQUE WORD " + pred + " BRC: \t" + uniquePredWordBRC);
+                //System.out.println("UNIQUE WORD " + pred + " COVERAGE ERROR: \t" + (1.0 - uniquePredWordCOVERAGEERR));
+                //System.out.println("UNIQUE WORD " + pred + " BRC: \t" + uniquePredWordBRC);
                 System.out.println(pred + " SET SIZE: \t" + abstractMRList_L.size());
                 //System.out.println(detailedRes);
-                System.out.println("///////////////////");
             }
 
         } catch (FileNotFoundException ex) {
@@ -4513,10 +4079,10 @@ public class ParseResultFiles {
             HashMap<String, HashSet<String>> attributeValues = new HashMap<>();
             while ((s = br.readLine()) != null) {
                 String[] arr = s.trim().split("\t");
-                da = arr[0].substring(arr[0].indexOf(":") + 1).toLowerCase().trim();
+                da = arr[0].substring(arr[0].indexOf(':') + 1).toLowerCase().trim();
                 String gen = " " + arr[1].trim().toLowerCase() + " ";
 
-                String MRstr = arr[0].substring(arr[0].indexOf(":") + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
+                String MRstr = arr[0].substring(arr[0].indexOf(':') + 1).replaceAll(",", ";").replaceAll("no or yes", "yes or no").replaceAll("ave ; presidio", "ave and presidio").replaceAll("point ; ste", "point and ste").trim();
                 String attributesStr = MRstr.substring(MRstr.indexOf('(') + 1, MRstr.length() - 1);
                 attributeValues = new HashMap<>();
                 if (!attributesStr.isEmpty()) {
@@ -4524,7 +4090,6 @@ public class ParseResultFiles {
 
                     String[] args = attributesStr.split(";");
                     if (attributesStr.contains("|")) {
-                        System.out.println(attributesStr);
                         System.exit(0);
                     }
                     for (String arg : args) {
@@ -4558,7 +4123,6 @@ public class ParseResultFiles {
                             value = "x" + index;
                         }
                         if (value.isEmpty()) {
-                            System.out.println("EMPTY VALUE");
                             System.exit(0);
                         }
 
@@ -4568,7 +4132,6 @@ public class ParseResultFiles {
                         if (attributeValues.get(attr).contains("yes")
                                 && attributeValues.get(attr).contains("no")) {
                             System.out.println(MRstr);
-                            System.out.println(attributeValues);
                             System.exit(0);
                         }
                     }
@@ -4630,7 +4193,7 @@ public class ParseResultFiles {
                             total++;
                         }
                     }
-                    double err = 1.0 - ((double) mentioned / (double) total);
+                    double err = 1.0 - (mentioned / (double) total);
                     if (Double.isNaN(err)) {
                         err = 0.0;
                     }
@@ -4639,10 +4202,9 @@ public class ParseResultFiles {
                         System.out.println("================");
                         System.out.println(da);
                         System.out.println(s.trim());
-                        for (String error : errors) {
+                        errors.forEach((error) -> {
                             System.out.println(error);
-                        }
-                        System.out.println("ERR: \t" + err);
+                        });
                     }
                 } else {
                     errs.add(0.0);
@@ -4650,13 +4212,10 @@ public class ParseResultFiles {
 
             }
             double avgErr = 0.0;
-            for (double err : errs) {
-                avgErr += err;
-            }
-            avgErr = avgErr / (double) errs.size() * 100;
+            avgErr = errs.stream().map((err) -> err).reduce(avgErr, (accumulator, _item) -> accumulator + _item);
+            avgErr = avgErr / errs.size() * 100;
             System.out.println("\t" + errs.size());
             System.out.println("ERR: \t" + avgErr);
-            System.out.println(daToGen);
         } catch (FileNotFoundException ex) {
             Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
@@ -4678,23 +4237,23 @@ public class ParseResultFiles {
             HashMap<String, HashSet<String>> attributeValues = new HashMap<>();
             while ((s = br.readLine()) != null) {
                 String[] arr = s.trim().split("\t");
-                da = arr[0].substring(arr[0].indexOf(":") + 1).toLowerCase().trim();
+                da = arr[0].substring(arr[0].indexOf(':') + 1).toLowerCase().trim();
                 String gen = " " + arr[1].trim().toLowerCase() + " ";
 
-                String MRstr = new String(da.substring(da.indexOf("(") + 1, da.lastIndexOf(")")));
+                String MRstr = new String(da.substring(da.indexOf('(') + 1, da.lastIndexOf(')')));
 
                 HashMap<String, String> names = new HashMap<>();
-                int s1 = MRstr.indexOf("\"");
+                int s1 = MRstr.indexOf('"');
                 int a = 0;
                 while (s1 != -1) {
-                    int e = MRstr.indexOf("\"", s1 + 1);
+                    int e = MRstr.indexOf('"', s1 + 1);
 
                     String name = MRstr.substring(s1, e + 1);
                     MRstr = MRstr.replace(name, "x" + a);
                     names.put("x" + a, name);
                     a++;
 
-                    s1 = MRstr.indexOf("\"");
+                    s1 = MRstr.indexOf('"');
                 }
 
                 attributeValues = new HashMap<>();
@@ -4803,7 +4362,7 @@ public class ParseResultFiles {
                         total++;
                     }
                 }
-                double err = 1.0 - ((double) mentioned / (double) total);
+                double err = 1.0 - (mentioned / (double) total);
                 if (Double.isNaN(err)) {
                     err = 0.0;
                 }
@@ -4814,21 +4373,17 @@ public class ParseResultFiles {
                         System.out.println("================");
                         System.out.println(da);
                         System.out.println(gen.trim());
-                        for (String error : errors) {
+                        errors.forEach((error) -> {
                             System.out.println(error);
-                        }
-                        System.out.println("ERR: \t" + err);
+                        });
                     }
                 }
             }
             double avgErr = 0.0;
-            for (double err : errs) {
-                avgErr += err;
-            }
-            avgErr = avgErr / (double) errs.size() * 100;
+            avgErr = errs.stream().map((err) -> err).reduce(avgErr, (accumulator, _item) -> accumulator + _item);
+            avgErr = avgErr / errs.size() * 100;
             System.out.println("\t" + errs.size());
             System.out.println("ERR: \t" + avgErr);
-            System.out.println(daToGen);
         } catch (FileNotFoundException ex) {
             Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
@@ -4874,13 +4429,11 @@ public class ParseResultFiles {
                         f = new File(folder + "run_SFX_" + data + "_" + earlyTerminationParam + "_" + learningRate + "_" + costingFunction + ".sh");
                         command += "qsub " + "run_SFX_" + data + "_" + earlyTerminationParam + "_" + learningRate + "_" + costingFunction + ".sh;";
                     } catch (NullPointerException e) {
-                        System.err.println("File not found." + e);
                     }
 
                     try {
                         bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
                     } catch (FileNotFoundException e) {
-                        System.err.println("Error opening file for writing! " + e);
                     }
 
                     try {
@@ -4894,13 +4447,10 @@ public class ParseResultFiles {
                             bw.write("java -Xmx20g -jar JDagger-" + data + ".jar " + earlyTerminationParam + " " + learningRate + " " + dataset + " " + costingFunction + " -classpath /lib > results_SFX_" + data + "_" + earlyTerminationParam + "_" + learningRate + "_" + costingFunction + ".txt" + "\n");
                         }
                     } catch (IOException e) {
-                        System.err.println("Write error!");
                     }
                     try {
                         bw.close();
                     } catch (IOException e) {
-                        System.err.println("Error closing file.");
-                    } catch (Exception e) {
                     }
                 }
             }
@@ -4912,25 +4462,20 @@ public class ParseResultFiles {
         try {
             f = new File(folder + "command" + data + ".txt");
         } catch (NullPointerException e) {
-            System.err.println("File not found." + e);
         }
 
         try {
             bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
         } catch (FileNotFoundException e) {
-            System.err.println("Error opening file for writing! " + e);
         }
 
         try {
             bw.write(command);
         } catch (IOException e) {
-            System.err.println("Write error!");
         }
         try {
             bw.close();
         } catch (IOException e) {
-            System.err.println("Error closing file.");
-        } catch (Exception e) {
         }
     }
 
@@ -4969,13 +4514,11 @@ public class ParseResultFiles {
                             f = new File(folder + "run_" + fold + "_" + earlyTerminationParam + "_" + learningRate + ".sh");
                             command += "qsub " + "run_" + fold + "_" + earlyTerminationParam + "_" + learningRate + ".sh;";
                         } catch (NullPointerException e) {
-                            System.err.println("File not found." + e);
                         }
 
                         try {
                             bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
                         } catch (FileNotFoundException e) {
-                            System.err.println("Error opening file for writing! " + e);
                         }
 
                         try {
@@ -4989,13 +4532,10 @@ public class ParseResultFiles {
                                 bw.write("java -Xmx20g -jar JDagger-BAGEL.jar " + fold + " " + earlyTerminationParam + " " + learningRate + " " + costingFunction + " -classpath /lib > results_BAGEL_fold_" + fold + "_" + earlyTerminationParam + "_" + learningRate + ".txt" + "\n");
                             }
                         } catch (IOException e) {
-                            System.err.println("Write error!");
                         }
                         try {
                             bw.close();
                         } catch (IOException e) {
-                            System.err.println("Error closing file.");
-                        } catch (Exception e) {
                         }
                     }
                 }
@@ -5008,25 +4548,20 @@ public class ParseResultFiles {
         try {
             f = new File(folder + "command.txt");
         } catch (NullPointerException e) {
-            System.err.println("File not found." + e);
         }
 
         try {
             bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
         } catch (FileNotFoundException e) {
-            System.err.println("Error opening file for writing! " + e);
         }
 
         try {
             bw.write(command);
         } catch (IOException e) {
-            System.err.println("Write error!");
         }
         try {
             bw.close();
         } catch (IOException e) {
-            System.err.println("Error closing file.");
-        } catch (Exception e) {
         }
     }
 
@@ -5043,7 +4578,6 @@ public class ParseResultFiles {
                 //System.out.println(txt.substring(0, 1).toUpperCase() + txt.substring(1));
                 
                 String txt = (" " + s + " ").replaceAll("\\. ", " \\. ").replaceAll("\\, ", " \\, ").replaceAll("\\? ", " \\? ").replaceAll("  ", " ").trim();
-                System.out.println(txt.toLowerCase());
             }
         } catch (FileNotFoundException ex) {
             Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
@@ -5077,9 +4611,9 @@ public class ParseResultFiles {
         for (File rFile : rFol.listFiles()) {
             try (BufferedReader br = new BufferedReader(new FileReader(rFile))) {
                 String fileNameParams = rFile.getName().substring(rFile.getName().indexOf("fold_") + 5, rFile.getName().indexOf(".txt"));
-                int fold = Integer.parseInt(fileNameParams.substring(0, fileNameParams.indexOf("_")));
-                String earlyTerminationParam = fileNameParams.substring(fileNameParams.indexOf("_") + 1, fileNameParams.lastIndexOf("_"));
-                double learningRate = Double.parseDouble(fileNameParams.substring(fileNameParams.lastIndexOf("_") + 1));
+                int fold = Integer.parseInt(fileNameParams.substring(0, fileNameParams.indexOf('_')));
+                String earlyTerminationParam = fileNameParams.substring(fileNameParams.indexOf('_') + 1, fileNameParams.lastIndexOf('_'));
+                double learningRate = Double.parseDouble(fileNameParams.substring(fileNameParams.lastIndexOf('_') + 1));
                 if (!results.containsKey(learningRate)) {
                     results.put(learningRate, new HashMap<String, HashMap<Integer, ArrayList<Double>>>());
                 }
@@ -5087,7 +4621,6 @@ public class ParseResultFiles {
                     results.get(learningRate).put(earlyTerminationParam, new HashMap<Integer, ArrayList<Double>>());
                 }
                 if (results.get(learningRate).get(earlyTerminationParam).containsKey(fold)) {
-                    System.out.println(rFile.getName() + ": Fold " + fold + " for earlyTerminationParam = " + earlyTerminationParam + " and learningRate = " + learningRate + " has already been parsed!");
                     System.exit(0);
                 }
                 results.get(learningRate).get(earlyTerminationParam).put(fold, new ArrayList<Double>());
@@ -5111,14 +4644,18 @@ public class ParseResultFiles {
         learningRates.add(0.2);
         //learningRates.add(0.3);
         HashMap<Double, HashMap<String, ArrayList<Double>>> avgResults = new HashMap();
-        for (Double learningRate : learningRates) {
+        learningRates.stream().map((learningRate) -> {
             if (!avgResults.containsKey(learningRate)) {
                 avgResults.put(learningRate, new HashMap<String, ArrayList<Double>>());
             }
-            for (String earlyTerminationParam : results.get(learningRate).keySet()) {
+            return learningRate;
+        }).forEachOrdered((learningRate) -> {
+            results.get(learningRate).keySet().stream().map((earlyTerminationParam) -> {
                 if (!avgResults.get(learningRate).containsKey(earlyTerminationParam)) {
                     avgResults.get(learningRate).put(earlyTerminationParam, new ArrayList<Double>());
                 }
+                return earlyTerminationParam;
+            }).forEachOrdered((earlyTerminationParam) -> {
                 for (int epoch = 0; epoch <= 6; epoch++) {
                     boolean allFoldsHaveResult = true;
                     double result = 0.0;
@@ -5131,18 +4668,15 @@ public class ParseResultFiles {
                     }
                     if (allFoldsHaveResult) {
                         int total = 0;
-                        for (Integer i : foldSizes.values()) {
-                            total += i;
-                        }
-                        System.out.println("TOTAL " + total);
-                        result /= (double) total;
+                        total = foldSizes.values().stream().map((i) -> i).reduce(total, Integer::sum);
+                        result /= total;
                         avgResults.get(learningRate).get(earlyTerminationParam).add(result);
                     } else {
-                        epoch = 100000;
+                        epoch = 100_000;
                     }
                 }
-            }
-        }
+            });
+        });
 
         //PRINT RESULTS
         BufferedWriter bw = null;
@@ -5150,13 +4684,11 @@ public class ParseResultFiles {
         try {
             f = new File("BAGELparsedResults.txt");
         } catch (NullPointerException e) {
-            System.err.println("File not found." + e);
         }
 
         try {
             bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
         } catch (FileNotFoundException e) {
-            System.err.println("Error opening file for writing! " + e);
         }
 
         try {
@@ -5177,12 +4709,16 @@ public class ParseResultFiles {
                         header += "FOLD = " + fold;
                         for (int epoch = 0; epoch <= 6; epoch++) {
                             under1 += "p" + epoch + "\t";
-                            if (epoch == 0) {
-                                under2 += "Before LOLS" + "\t";
-                            } else if (epoch == 1) {
-                                under2 += "After " + epoch + " epoch" + "\t";
-                            } else {
-                                under2 += "After " + epoch + " epochs" + "\t";
+                            switch (epoch) {
+                                case 0:
+                                    under2 += "Before LOLS" + "\t";
+                                    break;
+                                case 1:
+                                    under2 += "After " + epoch + " epoch" + "\t";
+                                    break;
+                                default:
+                                    under2 += "After " + epoch + " epochs" + "\t";
+                                    break;
                             }
                             if (results.get(learningRate).get(earlyTerminationParam).get(fold).size() > epoch) {
                                 text += results.get(learningRate).get(earlyTerminationParam).get(fold).get(epoch);
@@ -5227,12 +4763,16 @@ public class ParseResultFiles {
                     String text = earlyTerminationParam + "\t";
                     for (int epoch = 0; epoch <= 6; epoch++) {
                         under1 += "p" + epoch + "\t";
-                        if (epoch == 0) {
-                            under2 += "Before LOLS" + "\t";
-                        } else if (epoch == 1) {
-                            under2 += "After " + epoch + " epoch" + "\t";
-                        } else {
-                            under2 += "After " + epoch + " epochs" + "\t";
+                        switch (epoch) {
+                            case 0:
+                                under2 += "Before LOLS" + "\t";
+                                break;
+                            case 1:
+                                under2 += "After " + epoch + " epoch" + "\t";
+                                break;
+                            default:
+                                under2 += "After " + epoch + " epochs" + "\t";
+                                break;
                         }
                         if (avgResults.get(learningRate).get(earlyTerminationParam).size() > epoch) {
                             text += avgResults.get(learningRate).get(earlyTerminationParam).get(epoch);
@@ -5252,13 +4792,10 @@ public class ParseResultFiles {
                 bw.write("\n");
             }
         } catch (IOException e) {
-            System.err.println("Write error!");
         }
         try {
             bw.close();
         } catch (IOException e) {
-            System.err.println("Error closing file.");
-        } catch (Exception e) {
         }
     }
 
@@ -5274,12 +4811,18 @@ public class ParseResultFiles {
         String data = "HOTEL";
         for (int r = 0; r < 4; r++) {
             String metric = "BLEU";
-            if (r == 1) {
-                metric = "ROUGE";
-            } else if (r == 2) {
-                metric = "COVERAGE ERROR";
-            } else if (r == 3) {
-                metric = "BRC";
+            switch (r) {
+                case 1:
+                    metric = "ROUGE";
+                    break;
+                case 2:
+                    metric = "COVERAGE ERROR";
+                    break;
+                case 3:
+                    metric = "BRC";
+                    break;
+                default:
+                    break;
             }
 
             HashMap<String, HashMap<Double, HashMap<String, ArrayList<Double>>>> results = new HashMap<>();
@@ -5287,10 +4830,10 @@ public class ParseResultFiles {
             HashMap<String, HashMap<String, HashMap<Double, HashMap<String, ArrayList<Double>>>>> resultsUNIQUEPerPredicate = new HashMap<>();
             for (File rFile : rFol.listFiles()) {
                 try (BufferedReader br = new BufferedReader(new FileReader(rFile))) {
-                    String fileNameParams = rFile.getName().substring(rFile.getName().indexOf("_") + 5, rFile.getName().indexOf(".txt"));
-                    int place1 = fileNameParams.indexOf("_");
-                    int place2 = fileNameParams.indexOf("_", place1 + 1);
-                    int place3 = fileNameParams.lastIndexOf("_");
+                    String fileNameParams = rFile.getName().substring(rFile.getName().indexOf('_') + 5, rFile.getName().indexOf(".txt"));
+                    int place1 = fileNameParams.indexOf('_');
+                    int place2 = fileNameParams.indexOf('_', place1 + 1);
+                    int place3 = fileNameParams.lastIndexOf('_');
                     String earlyTerminationParam = fileNameParams.substring(place1 + 1, place2);
                     double learningRate = Double.parseDouble(fileNameParams.substring(place2 + 1, place3));
                     String lossFunction = fileNameParams.substring(place3 + 1);
@@ -5329,7 +4872,7 @@ public class ParseResultFiles {
                             if (!resultsUNIQUEPerPredicate.get(predicate).get(lossFunction).get(learningRate).containsKey(earlyTerminationParam)) {
                                 resultsUNIQUEPerPredicate.get(predicate).get(lossFunction).get(learningRate).put(earlyTerminationParam, new ArrayList<Double>());
                             }
-                            resultsUNIQUEPerPredicate.get(predicate).get(lossFunction).get(learningRate).get(earlyTerminationParam).add(Double.parseDouble(s.substring(s.indexOf(":") + 1).trim()));
+                            resultsUNIQUEPerPredicate.get(predicate).get(lossFunction).get(learningRate).get(earlyTerminationParam).add(Double.parseDouble(s.substring(s.indexOf(':') + 1).trim()));
                         }
                     }
                 } catch (FileNotFoundException ex) {
@@ -5500,12 +5043,16 @@ public class ParseResultFiles {
                         double bestEpoch = 0.0;
                         for (int epoch = 0; epoch <= 10; epoch++) {
                             under1 += "p" + epoch + "\t";
-                            if (epoch == 0) {
-                                under2 += "Before LOLS" + "\t";
-                            } else if (epoch == 1) {
-                                under2 += "After " + epoch + " epoch" + "\t";
-                            } else {
-                                under2 += "After " + epoch + " epochs" + "\t";
+                            switch (epoch) {
+                                case 0:
+                                    under2 += "Before LOLS" + "\t";
+                                    break;
+                                case 1:
+                                    under2 += "After " + epoch + " epoch" + "\t";
+                                    break;
+                                default:
+                                    under2 += "After " + epoch + " epochs" + "\t";
+                                    break;
                             }
                             if (results.get(lossFunction).get(learningRate).get(earlyTerminationParam).size() > epoch) {
                                 if (results.get(lossFunction).get(learningRate).get(earlyTerminationParam).get(epoch) > bestEpoch) {
@@ -5543,12 +5090,13 @@ public class ParseResultFiles {
      */
     public static void writeVectors(String fileName, List<String> vectors) {
         try {
-            PrintWriter out = new PrintWriter(fileName);
-            for (String vector : vectors) {
-                out.println(vector);
+            try (PrintWriter out = new PrintWriter(fileName)) {
+                vectors.forEach((vector) -> {
+                    out.println(vector);
+                });
             }
-            out.close();
         } catch (FileNotFoundException ex) {
         }
     }
+    private static final Logger LOG = Logger.getLogger(ParseResultFiles.class.getName());
 }

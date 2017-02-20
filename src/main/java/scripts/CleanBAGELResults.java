@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package imitationNLG;
+package scripts;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.logging.Logger;
 
 /**
  *
@@ -51,17 +52,17 @@ public class CleanBAGELResults {
                 String line = readLine.substring(a1 + "MR@@".length(), b1);
 
                 HashMap<String, String> names = new HashMap<>();
-                int s = line.indexOf("\"");
+                int s = line.indexOf('"');
                 int a = 0;
                 while (s != -1) {
-                    int e = line.indexOf("\"", s + 1);
+                    int e = line.indexOf('"', s + 1);
 
                     String name = line.substring(s, e + 1);
                     line = line.replace(name, "x" + a);
                     names.put("x" + a, name);
                     a++;
 
-                    s = line.indexOf("\"");
+                    s = line.indexOf('"');
                 }
 
                 HashMap<String, HashSet<String>> attributeValues = new HashMap<>();
@@ -107,13 +108,11 @@ public class CleanBAGELResults {
         try {
             f = new File("D:\\Users\\Black Fox\\Dropbox\\TO-DO\\JAROW\\ExperimentData\\BAGELOndrejResultsUNIQUE.txt");
         } catch (NullPointerException e) {
-            System.err.println("File not found." + e);
         }
 
         try {
             bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
         } catch (FileNotFoundException e) {
-            System.err.println("Error opening file for writing! " + e);
         }
 
         for (HashMap<String, HashSet<String>> attr : attributes.keySet()) {
@@ -124,15 +123,12 @@ public class CleanBAGELResults {
                 }
 
             } catch (IOException e) {
-                System.err.println("Write error!");
             }
         }
 
         try {
             bw.close();
         } catch (IOException e) {
-            System.err.println("Error closing file.");
-        } catch (Exception e) {
         }
 
         HashSet<HashMap<String, HashSet<String>>> nonUniqueAttributes2 = new HashSet<>();
@@ -148,17 +144,17 @@ public class CleanBAGELResults {
                 String line = readLine.substring(a1 + "MR@@".length(), b1);
 
                 HashMap<String, String> names = new HashMap<>();
-                int s = line.indexOf("\"");
+                int s = line.indexOf('"');
                 int a = 0;
                 while (s != -1) {
-                    int e = line.indexOf("\"", s + 1);
+                    int e = line.indexOf('"', s + 1);
 
                     String name = line.substring(s, e + 1);
                     line = line.replace(name, "x" + a);
                     names.put("x" + a, name);
                     a++;
 
-                    s = line.indexOf("\"");
+                    s = line.indexOf('"');
                 }
 
                 HashMap<String, HashSet<String>> attributeValues = new HashMap<>();
@@ -204,13 +200,11 @@ public class CleanBAGELResults {
         try {
             f = new File("D:\\Users\\Black Fox\\Dropbox\\TO-DO\\JAROW\\ExperimentData\\BAGELLolsResultsUNIQUE.txt");
         } catch (NullPointerException e) {
-            System.err.println("File not found." + e);
         }
 
         try {
             bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f)));
         } catch (FileNotFoundException e) {
-            System.err.println("Error opening file for writing! " + e);
         }
 
         for (HashMap<String, HashSet<String>> attr : attributes.keySet()) {
@@ -221,16 +215,12 @@ public class CleanBAGELResults {
                 }
 
             } catch (IOException e) {
-                System.err.println("Write error!");
             }
         }
 
         try {
             bw.close();
         } catch (IOException e) {
-            System.err.println("Error closing file.");
-        } catch (Exception e) {
         }
-
     }
 }
