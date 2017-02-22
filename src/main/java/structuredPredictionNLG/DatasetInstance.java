@@ -163,10 +163,10 @@ public class DatasetInstance implements Serializable, Comparable<DatasetInstance
         }
 
         //primitive numbers follow this form
-        if (this.getMeaningRepresentation().getAttributes().values().size() < o.getMeaningRepresentation().getAttributes().values().size()) {
+        if (this.getMeaningRepresentation().getAttributeValues().values().size() < o.getMeaningRepresentation().getAttributeValues().values().size()) {
             return BEFORE;
         }
-        if (this.getMeaningRepresentation().getAttributes().values().size() > o.getMeaningRepresentation().getAttributes().values().size()) {
+        if (this.getMeaningRepresentation().getAttributeValues().values().size() > o.getMeaningRepresentation().getAttributeValues().values().size()) {
             return AFTER;
         }
 

@@ -101,7 +101,7 @@ public class SFX extends DatasetParser {
             wenFile = "results/wenResults/sfxrest.log";
         }
         
-        if (isResetStoredCaches() || !loadLists()) {
+        if (true || !loadLists()) {
             // Populate the predicate, attribute, attribute/value, and value alignment collections
             createLists(dataFile);
             writeLists();
@@ -179,8 +179,8 @@ public class SFX extends DatasetParser {
      */
     @Override
     public void createTrainingData() {
-        setTrainingData(new ArrayList<>(getTrainingData().subList(0, 50)));
-        setTestingData(new ArrayList<>(getTrainingData()));
+        //setTrainingData(new ArrayList<>(getTrainingData().subList(0, 50)));
+        //setTestingData(new ArrayList<>(getTrainingData()));
 
         // Calculate alignments between the word of the sentence and the atribute/values
         if (getUseAlignments().equals("naive")) {
@@ -339,8 +339,9 @@ public class SFX extends DatasetParser {
     /**
      *
      * @param printResults
+     * @param resultsFile
      */
-    public void parseWenFiles(boolean printResults, String rFile) {
+    public void parseWenFiles(boolean printResults, String resultsFile) {
         wenEvaluationReferenceSequences = new HashMap<>();
         wenEvaluationReferences = new HashMap<>();
         HashMap<String, String> daToGen = new HashMap<>();
@@ -352,7 +353,7 @@ public class SFX extends DatasetParser {
         HashMap<String, String> MRtoAbstractMR = new HashMap<>();
         HashMap<String, String> abstractMRtoMR = new HashMap<>();
         HashMap<String, String> abstractMRtoText = new HashMap<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(rFile))) {
+        try (BufferedReader br = new BufferedReader(new FileReader(resultsFile))) {
             String s;
             boolean inGen = false;
             boolean inRef = false;
@@ -853,7 +854,6 @@ public class SFX extends DatasetParser {
     public Double evaluateGeneration(HashMap<String, JAROW> classifierAttrs, HashMap<String, HashMap<String, JAROW>> classifierWords, ArrayList<DatasetInstance> testingData, int epoch) {
         System.out.println("Evaluate argument generation ");
 
-        int totalArgDistance = 0;
         ArrayList<ScoredFeaturizedTranslation<IString, String>> generations = new ArrayList<>();
         HashMap<DatasetInstance, ArrayList<Action>> generationActions = new HashMap<>();
         ArrayList<ArrayList<Sequence<IString>>> finalReferences = new ArrayList<>();
@@ -877,8 +877,8 @@ public class SFX extends DatasetParser {
 
             HashSet<String> attrValuesToBeMentioned = new HashSet<>();
             HashSet<String> attrValuesAlreadyMentioned = new HashSet<>();
-            for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-                for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+            for (String attribute : di.getMeaningRepresentation().getAttributeValues().keySet()) {
+                for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                     attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
                 }
             }
@@ -897,7 +897,7 @@ public class SFX extends DatasetParser {
                         if (predictAttr.getLabel() != null) {
                             predictedAttr = predictAttr.getLabel().trim();
 
-                            if (!classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributes().keySet())) {
+                            if (!classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributeValues().keySet())) {
                                 System.out.println("MR ATTR NOT IN CLASSIFIERS");
                                 System.out.println(classifierAttrs.get(predicate).getCurrentWeightVectors().keySet());
                             }
@@ -906,7 +906,7 @@ public class SFX extends DatasetParser {
                                 predictedValue = chooseNextValue(predictedAttr, attrValuesToBeMentioned);
 
                                 HashSet<String> rejectedAttrs = new HashSet<>();
-                                while (predictedValue.isEmpty() && (!predictedAttr.equals(Action.TOKEN_END) || (predictedAttrValues.isEmpty() && classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributes().keySet())))) {
+                                while (predictedValue.isEmpty() && (!predictedAttr.equals(Action.TOKEN_END) || (predictedAttrValues.isEmpty() && classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributeValues().keySet())))) {
                                     rejectedAttrs.add(predictedAttr);
 
                                     predictedAttr = Action.TOKEN_END;
@@ -952,11 +952,11 @@ public class SFX extends DatasetParser {
             attrValuesToBeMentioned = new HashSet<>();
             attrValuesAlreadyMentioned = new HashSet<>();
             HashMap<String, ArrayList<String>> valuesToBeMentioned = new HashMap<>();
-            for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-                for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+            for (String attribute : di.getMeaningRepresentation().getAttributeValues().keySet()) {
+                for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                     attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
                 }
-                valuesToBeMentioned.put(attribute, new ArrayList<>(di.getMeaningRepresentation().getAttributes().get(attribute)));
+                valuesToBeMentioned.put(attribute, new ArrayList<>(di.getMeaningRepresentation().getAttributeValues().get(attribute)));
             }
             if (attrValuesToBeMentioned.isEmpty()) {
                 attrValuesToBeMentioned.add("empty=empty");
@@ -1169,23 +1169,13 @@ public class SFX extends DatasetParser {
             finalReferences.add(references);
         }
 
-        NISTMetric NIST = new NISTMetric(finalReferences);
         BLEUMetric BLEU = new BLEUMetric(finalReferences, 4, false);
-        BLEUMetric BLEUsmooth = new BLEUMetric(finalReferences, 4, true);
-        Double nistScore = NIST.score(generations);
         Double bleuScore = BLEU.score(generations);
-        Double bleuSmoothScore = BLEUsmooth.score(generations);
 
         double finalCoverageError = 0.0;
         finalCoverageError = attrCoverage.values().stream().map((c) -> c).reduce(finalCoverageError, (accumulator, _item) -> accumulator + _item);
         finalCoverageError /= attrCoverage.size();
         for (int i = 0; i < allPredictedWordSequences.size(); i++) {
-            String refs = "";
-            if (allPredictedReferences.get(i) != null) {
-                for (String ref : allPredictedReferences.get(i)) {
-                    refs += ref + ";";
-                }
-            }
             double maxRouge = 0.0;
             String predictedWordSequence = allPredictedWordSequences.get(i).replaceAll("\\?", " \\? ").replaceAll(":", " : ").replaceAll("\\.", " \\. ").replaceAll(",", " , ").replaceAll("  ", " ").trim();
             for (String ref : allPredictedReferences.get(i)) {
@@ -1434,7 +1424,7 @@ public class SFX extends DatasetParser {
             BufferedWriter bw = null;
             File f = null;
             try {
-                f = new File("random_SFX" + getDataset() + "TextsAfter" + (epoch) + "_" + JLOLS.sentenceCorrectionFurtherSteps + "_" + JLOLS.p + "epochsTESTINGDATA.txt");
+                f = new File("results/random_SFX" + getDataset() + "TextsAfter" + (epoch) + "_" + JLOLS.sentenceCorrectionFurtherSteps + "_" + JLOLS.p + "epochsTESTINGDATA.txt");
             } catch (NullPointerException e) {
             }
 
@@ -1472,17 +1462,19 @@ public class SFX extends DatasetParser {
     }
 
     /**
-     *
-     * @param dataFile
+     * Populates the predicate, attribute, attribute/value pair, and value alignment collections
+     * @param dataFile The dataset file.
      */
     public void createLists(File dataFile) {
         try {
+            // Initialize the collections
             setPredicates(new ArrayList<>());
             setAttributes(new HashMap<>());
             setAttributeValuePairs(new HashMap<>());
             setValueAlignments(new HashMap<>());
 
-            String str = new String();
+            // Obtain the dataset portion of the file
+            String dataPart = new String();
             boolean begin = false;
             try (BufferedReader br = new BufferedReader(new FileReader(dataFile))) {
                 String s;
@@ -1491,7 +1483,7 @@ public class SFX extends DatasetParser {
                         begin = true;
                     }
                     if (begin) {
-                        str += s;
+                        dataPart += s;
                     }
                 }
             } catch (FileNotFoundException ex) {
@@ -1500,16 +1492,20 @@ public class SFX extends DatasetParser {
                 Logger.getLogger(Bagel.class.getName()).log(Level.SEVERE, null, ex);
             }
 
-            JSONArray overArray = new JSONArray(str);
-
+            // Parse the dataset with JSON
+            JSONArray overArray = new JSONArray(dataPart);
             for (int o = 0; o < overArray.length(); o++) {
+                // "dial" notes each seperate dialog
                 JSONArray arr = overArray.getJSONObject(o).getJSONArray("dial");
                 for (int i = 0; i < arr.length(); i++) {
-                    String MRstr = "";
-                    String ref = "";
+                    String MRstr;
+                    String ref;
+                    // "dact" notes every meaning representation
                     MRstr = arr.getJSONObject(i).getJSONObject("S").getString("dact");
+                    // "ref" notes every corresponding reference
                     ref = arr.getJSONObject(i).getJSONObject("S").getString("ref").replaceAll("-s", "s");
 
+                    //We split some composite words (based on Wen et al's (2016) code)
                     ref = (" " + ref + " ").replaceAll(" it's ", " it is ")
                             .replaceAll(" don't ", " do not ")
                             .replaceAll(" doesn't ", " does not ")
@@ -1601,8 +1597,10 @@ public class SFX extends DatasetParser {
                             .replaceAll(" totally ", " total -ly ")
                             .replaceAll(" \\# ", " number ")
                             .replaceAll(" \\& ", " and ")
+                            .replaceAll(" avenue ", " ave ")
                             .replaceAll(" -s ", " s ").trim();
 
+                    // If the MR concerns one of the following predicates, and a ref is available
                     if ((MRstr.startsWith("inform(")
                             || MRstr.startsWith("inform_only")
                             || MRstr.startsWith("inform_no_match(")
@@ -1612,6 +1610,7 @@ public class SFX extends DatasetParser {
                             || MRstr.startsWith("?reqmore(")
                             || MRstr.startsWith("goodbye("))
                             && !ref.isEmpty()) {
+                        // Obtain the predicate
                         String predicate = MRstr.substring(0, MRstr.indexOf('('));
                         if (!getPredicates().contains(predicate) && predicate != null) {
                             getPredicates().add(predicate);
@@ -1624,18 +1623,18 @@ public class SFX extends DatasetParser {
                             }
                         }
 
+                        // Obtain the attributes
                         String attributesStr = MRstr.substring(MRstr.indexOf('(') + 1, MRstr.length() - 1);
                         HashMap<String, HashSet<String>> attributeValues = new HashMap<>();
+                        // Track the indexes used for variables identifiers (seperately for each attribute)
+                        HashMap<String, Integer> attrXIndeces = new HashMap<>();
                         if (!attributesStr.isEmpty()) {
-                            HashMap<String, Integer> attrXIndeces = new HashMap<>();
-
+                            // Parse the attributes and their values
                             String[] args = attributesStr.split(";");
-                            if (attributesStr.contains("|")) {
-                                System.exit(0);
-                            }
                             for (String arg : args) {
-                                String attr = "";
+                                String attr;
                                 String value = "";
+                                // If the attribute has corresponding values
                                 if (arg.contains("=")) {
                                     String[] subAttr = arg.split("=");
                                     value = subAttr[1].toLowerCase();
@@ -1644,6 +1643,7 @@ public class SFX extends DatasetParser {
                                     if (value.startsWith("\'")) {
                                         value = value.substring(1, value.length() - 1);
                                     }
+                                    // Normalize some closed set values
                                     if (value.equals("true")) {
                                         value = "yes";
                                     }
@@ -1653,6 +1653,10 @@ public class SFX extends DatasetParser {
                                     if (value.equals("dontcare")) {
                                         value = "dont_care";
                                     }
+                                    if ((" " + value + " ").contains(" avenue ")) {
+                                        value = (" " + value + " ").replace(" avenue ", " ave ").trim();
+                                    }
+                                    // Treat these values as seperate attributes since they are expressed quite differently
                                     if (value.equals("no")
                                             || value.equals("yes")
                                             || value.equals("yes or no")
@@ -1661,6 +1665,8 @@ public class SFX extends DatasetParser {
                                         attr += "_" + value.replaceAll(" ", "_");
                                         value = attr;
                                     }
+                                    // Treat "dont_care" instances, as if "dont_care" is the attribute, and the original attribute is the value
+                                    // We do this because the phrasing is very similar between different "dont_care" realizations
                                     if (value.equals("dont_care")) {
                                         String v = value;
                                         value = attr;
@@ -1675,10 +1681,13 @@ public class SFX extends DatasetParser {
                                 if (!attributeValues.containsKey(attr)) {
                                     attributeValues.put(attr, new HashSet<String>());
                                 }
+                                // If the attribute has no corresponding value, we encode it by using the attibute identifier as the value
                                 if (value.isEmpty()) {
                                     value = attr;
                                 }
 
+                                // If the value is a variable, we name it as {@X@ + attribute identifier + variable index (for this attribute)}
+                                // This occurs when values are already set as variables in the MR, before any delexicalization happens
                                 if (value.toLowerCase().startsWith("x")) {
                                     int index = 0;
                                     if (!attrXIndeces.containsKey(attr)) {
@@ -1689,60 +1698,42 @@ public class SFX extends DatasetParser {
                                     }
                                     value = "x" + index;
                                 }
-                                if (value.isEmpty()) {
-                                    System.exit(0);
-                                }
-
                                 attributeValues.get(attr).add(value.trim().toLowerCase());
                             }
-                            for (String attr : attributeValues.keySet()) {
-                                if (attributeValues.get(attr).contains("yes")
-                                        && attributeValues.get(attr).contains("no")) {
-                                    System.out.println(MRstr);
-                                    System.exit(0);
-                                }
-                            }
                         }
 
-                        //REF
-                        //DELEXICALIZATION
+                        // Delexicalizing the attribute/value pairs
+                        HashMap<String, HashSet<String>> delexicalizedAttributeValues = new HashMap<>();
                         HashMap<String, HashMap<String, Integer>> attrValuePriorities = new HashMap<>();
-                        HashMap<String, HashSet<String>> delexAttributeValues = new HashMap<>();
-                        int prio = 0;
+                        int maximumPriority = 0;
+                        /* Delixalization of values needs to happen incrementally with priority given to the values of greater lenth, to avoid overlap of values in the reference
+                         * e.g. for the MR: inform{name="inn on castro", near="castro"}, with the reference "inn on castro is a nice restaurant",
+                         *      we need to first align and delexicalize the "inn on castro" value, before the "castro" value 
+                         *      (in this case because "castro" doesn't appear in the reference, but even if it appeared later the priorities would help align it with the correct one)
+                        */
+                        // We begin by determining which values may require delexicalization, and which not
                         for (String attr : attributeValues.keySet()) {
                             if (!attr.isEmpty()) {
-                                delexAttributeValues.put(attr, new HashSet<String>());
-                                if (attr.equals("name")
-                                        || attr.equals("type")
-                                        || attr.equals("pricerange")
-                                        || attr.equals("price")
-                                        || attr.equals("phone")
-                                        || attr.equals("address")
-                                        || attr.equals("postcode")
-                                        || attr.equals("area")
-                                        || attr.equals("near")
-                                        || attr.equals("food")
-                                        || attr.equals("count")
-                                        || attr.equals("goodformeal")) {
-                                    attrValuePriorities.put(attr, new HashMap<String, Integer>());
-                                    for (String value : attributeValues.get(attr)) {
-                                        if (/*!value.equals("dont_care")
-                                                &&*/!value.equals("none")
-                                                && !value.equals("empty")
-                                                && !value.equals(attr)) {
-                                            attrValuePriorities.get(attr).put(value, prio);
-                                            prio++;
-                                        } else {
-                                            delexAttributeValues.get(attr).add(value);
-                                        }
+                                delexicalizedAttributeValues.put(attr, new HashSet<String>());
+                                attrValuePriorities.put(attr, new HashMap<String, Integer>());
+                                for (String value : attributeValues.get(attr)) {
+                                    if (!value.equals("none")
+                                            && !value.equals("empty")
+                                            && !value.equals("yes")
+                                            && !value.equals("yes or no")
+                                            && !value.equals("no")
+                                            && !value.equals(attr)) {
+                                        // Initially priorities are given according to value order
+                                        attrValuePriorities.get(attr).put(value, maximumPriority);
+                                        maximumPriority++;
+                                    } else {
+                                        // No delexicalization is needed here
+                                        delexicalizedAttributeValues.get(attr).add(value);
                                     }
-                                } else {
-                                    attributeValues.get(attr).forEach((value) -> {
-                                        delexAttributeValues.get(attr).add(value);
-                                    });
                                 }
                             }
                         }
+                        // We shift the priorities of different values, according to their perspective lengths (i.e. longer values have higher priority)
                         boolean change = true;
                         while (change) {
                             change = false;
@@ -1764,48 +1755,37 @@ public class SFX extends DatasetParser {
                                 }
                             }
                         }
-                        HashMap<String, Integer> xCounts = new HashMap<>();
-                        HashMap<String, String> delexMap = new HashMap<>();
+                        // Map between variables and their lexicalized values, required for relexicalization during postprocessing after the sentence generation
+                        HashMap<String, String> delexicalizationMap = new HashMap<>();
                         ref = " " + ref + " ";
-                        for (int p = 0; p < prio; p++) {
+                        // Delexicalization occurs, in order of priority
+                        for (int priority = 0; priority < maximumPriority; priority++) {
                             for (String attr : attrValuePriorities.keySet()) {
-                                if (!xCounts.containsKey(attr)) {
-                                    xCounts.put(attr, 0);
+                                if (!attrXIndeces.containsKey(attr)) {
+                                    attrXIndeces.put(attr, 0);
                                 }
                                 for (String value : attrValuePriorities.get(attr).keySet()) {
-                                    if (value.contains(" avenue ")) {
-                                        value = value.replace(" avenue ", " ave ");
-                                    }
-                                    if (ref.contains(" avenue ")) {
-                                        ref = ref.replace(" avenue ", " ave ");
-                                    }
-                                    if (attrValuePriorities.get(attr).get(value) == p) {
+                                    if (attrValuePriorities.get(attr).get(value) == priority) {
+                                        // If the value doesn't appear verbatim in the reference, and the value is not composed of multiple subvalues (i.e. doesn't contain connectives)
                                         if (!ref.contains(" " + value + " ")
                                                 && !value.contains(" and ")
                                                 && !value.contains(" or ")) {
-                                            /*System.out.println(ref);
-                                            System.out.println(attr);
-                                            System.out.println(value);
-                                            System.out.println(attrValuePriorities);*/
-                                            if (value.equals("korean")) {
-                                                System.out.println(ref);
-                                                System.out.println(attr);
-                                                System.out.println(value);
-                                                System.exit(0);
-                                            }
                                             if (value.equals("restaurant")
                                                     && ref.contains(" place ")) {
-                                                ref = ref.replace(" place ", " " + Action.TOKEN_X + attr + "_" + xCounts.get(attr) + " ");
+                                                ref = ref.replace(" place ", " " + Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr) + " ");
                                                 ref = ref.replaceAll("  ", " ");
-                                                delexAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + xCounts.get(attr));
-                                                delexMap.put(Action.TOKEN_X + attr + "_" + xCounts.get(attr), "place");
-                                                xCounts.put(attr, xCounts.get(attr) + 1);
+                                                delexicalizedAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr));
+                                                delexicalizationMap.put(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr), "place");
+                                                attrXIndeces.put(attr, attrXIndeces.get(attr) + 1);
                                             } else {
-                                                delexAttributeValues.get(attr).add(value);
+                                                delexicalizedAttributeValues.get(attr).add(value);
                                             }
+                                        // If the value doesn't appear verbatim in the reference, but the value is composed of multiple sub-values
                                         } else if (!ref.contains(" " + value + " ")
                                                 && (value.contains(" and ")
                                                 || value.contains(" or "))) {
+                                            // We first check if the value appears verbatim when we switch "and" with "or" and vice versa
+                                            // We do this due to some inconsistencies in the dataset on how conjuctions are treated
                                             String tempValue = value;
                                             if (value.contains(" and ")) {
                                                 tempValue = value.replace(" and ", " or ");
@@ -1814,59 +1794,43 @@ public class SFX extends DatasetParser {
                                             }
 
                                             if (ref.contains(" " + tempValue + " ")) {
-                                                ref = ref.replace(" " + tempValue + " ", " " + Action.TOKEN_X + attr + "_" + xCounts.get(attr) + " ");
+                                                ref = ref.replace(" " + tempValue + " ", " " + Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr) + " ");
                                                 ref = ref.replaceAll("  ", " ");
-                                                delexAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + xCounts.get(attr));
-                                                delexMap.put(Action.TOKEN_X + attr + "_" + xCounts.get(attr), value);
-                                                xCounts.put(attr, xCounts.get(attr) + 1);
+                                                delexicalizedAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr));
+                                                delexicalizationMap.put(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr), value);
+                                                attrXIndeces.put(attr, attrXIndeces.get(attr) + 1);
                                             } else {
+                                                // We split the conjunction into the seperate values; so far the code supports only 2 sub-values
                                                 String[] values = new String[2];
                                                 if (value.contains(" and ")) {
                                                     values = value.split(" and ");
                                                 } else if (value.contains(" or ")) {
                                                     values = value.split(" or ");
                                                 }
+                                                // And check if the conjunction appears verbatim when we switch the position of the sub-values
                                                 String newValue1 = values[1] + " and " + values[0];
                                                 String newValue2 = values[1] + " or " + values[0];
                                                 if (ref.contains(" " + newValue1 + " ")) {
-                                                    ref = ref.replace(" " + newValue1 + " ", " " + Action.TOKEN_X + attr + "_" + xCounts.get(attr) + " ");
+                                                    ref = ref.replace(" " + newValue1 + " ", " " + Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr) + " ");
                                                     ref = ref.replaceAll("  ", " ");
-                                                    delexAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + xCounts.get(attr));
-                                                    delexMap.put(Action.TOKEN_X + attr + "_" + xCounts.get(attr), value);
-                                                    xCounts.put(attr, xCounts.get(attr) + 1);
+                                                    delexicalizedAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr));
+                                                    delexicalizationMap.put(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr), value);
+                                                    attrXIndeces.put(attr, attrXIndeces.get(attr) + 1);
                                                 } else if (ref.contains(" " + newValue2 + " ")) {
-                                                    ref = ref.replace(" " + newValue2 + " ", " " + Action.TOKEN_X + attr + "_" + xCounts.get(attr) + " ");
+                                                    ref = ref.replace(" " + newValue2 + " ", " " + Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr) + " ");
                                                     ref = ref.replaceAll("  ", " ");
-                                                    delexAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + xCounts.get(attr));
-                                                    delexMap.put(Action.TOKEN_X + attr + "_" + xCounts.get(attr), value);
-                                                    xCounts.put(attr, xCounts.get(attr) + 1);
-                                                } else {
-                                                    System.out.println(value);
-                                                    System.exit(0);
+                                                    delexicalizedAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr));
+                                                    delexicalizationMap.put(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr), value);
+                                                    attrXIndeces.put(attr, attrXIndeces.get(attr) + 1);
                                                 }
                                             }
-
-                                            /*for (int v = 0; v < values.length; v++) {
-                                                if (!ref.contains(" " + values[v] + " ")) {
-                                                    /*System.out.println(ref);
-                                                    System.out.println(attr);
-                                                    System.out.println(value);
-                                                    System.out.println(values[v]);
-                                                    System.out.println(attrValuePriorities);
-                                                } else {
-                                                    ref = ref.replace(" " + values[v] + " ", " " + Action.TOKEN_X + attr + "_" + xCounts.get(attr) + " ");
-                                                    ref = ref.replaceAll("  ", " ");
-                                                    delexAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + xCounts.get(attr));
-                                                    delexMap.put(Action.TOKEN_X + attr + "_" + xCounts.get(attr), values[v]);
-                                                    xCounts.put(attr, xCounts.get(attr) + 1);
-                                                }
-                                            }*/
+                                        // If the value appears verbatim in the reference, delexicalize it
                                         } else {
-                                            ref = ref.replace(" " + value + " ", " " + Action.TOKEN_X + attr + "_" + xCounts.get(attr) + " ");
+                                            ref = ref.replace(" " + value + " ", " " + Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr) + " ");
                                             ref = ref.replaceAll("  ", " ");
-                                            delexAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + xCounts.get(attr));
-                                            delexMap.put(Action.TOKEN_X + attr + "_" + xCounts.get(attr), value);
-                                            xCounts.put(attr, xCounts.get(attr) + 1);
+                                            delexicalizedAttributeValues.get(attr).add(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr));
+                                            delexicalizationMap.put(Action.TOKEN_X + attr + "_" + attrXIndeces.get(attr), value);
+                                            attrXIndeces.put(attr, attrXIndeces.get(attr) + 1);
                                         }
                                     }
                                 }
@@ -1874,293 +1838,228 @@ public class SFX extends DatasetParser {
                         }
                         ref = ref.trim();
 
-                        MeaningRepresentation MR = new MeaningRepresentation(predicate, delexAttributeValues, MRstr);
-                        MR.setDelexMap(delexMap);
-
-                        int initCount = attributeValues.keySet().size();
-                        for (HashSet<String> a : attributeValues.values()) {
-                            for (String b : a) {
-                                if (((b.contains(" and ")
-                                        || b.contains(" or ")))
-                                        && !b.equals("yes or no")
-                                        && !delexMap.containsValue(b)) {
-                                    String[] values = null;
-                                    if (b.contains(" and ")) {
-                                        values = b.split(" and ");
-                                    } else if (b.contains(" or ")) {
-                                        values = b.split(" or ");
-                                    }
-                                    initCount += values.length;
-                                } else {
-                                    initCount++;
-                                }
-                            }
-                        }
-                        int nextCount = MR.getAttributes().keySet().size();
-                        nextCount = MR.getAttributes().values().stream().map((a) -> a.size()).reduce(nextCount, Integer::sum);
-                        if (initCount != nextCount) {
-                            System.out.println("initCount != nextCount");
-                            System.out.println(initCount);
-                            System.out.println(attributeValues.keySet() + " " + attributeValues.values());
-                            System.out.println(nextCount);
-                            System.out.println(MR.getAttributes().keySet() + " " + MR.getAttributes().values());
-                        }
+                        // We construct the MeaningRepresentation
+                        MeaningRepresentation MR = new MeaningRepresentation(predicate, delexicalizedAttributeValues, MRstr, delexicalizationMap);
+                                                
+                        // Sequences of attribute/values pairs and words in the order we observe this in the reference
                         ArrayList<String> observedAttrValueSequence = new ArrayList<>();
-
-                        ArrayList<String> realization = new ArrayList<>();
-                        ArrayList<String> alignedRealization = new ArrayList<>();
-
+                        ArrayList<String> observedWordSequence = new ArrayList<>();
+                        
+                        // The observed word sequence does not include punctuation
                         String[] words = ref.replaceAll("([,.?!;:'])", " $1").split(" ");
-                        HashMap<String, Integer> attributeXCount = new HashMap<>();
+                        
+                        // We construct the observed word sequence (and fix some orthographical errors along the way)
                         for (int w = 0; w < words.length; w++) {
-                            String mentionedAttribute = "";
                             if (!words[w].trim().isEmpty()) {
-                                int s = words[w].indexOf('[');
-                                if (s != -1) {
-                                    int e = words[w].indexOf(']', s + 1);
-
-                                    String mentionedValue = words[w].substring(s, e + 1);
-                                    words[w] = words[w].replace(mentionedValue, "");
-                                    if (mentionedValue.contains("+") && !words[w].trim().isEmpty()) {
-                                        mentionedAttribute = mentionedValue.substring(1, mentionedValue.indexOf('+'));
-
-                                        if (MR.getAttributes().containsKey(mentionedAttribute)) {
-                                            if (observedAttrValueSequence.isEmpty()) {
-                                                String v = mentionedValue.substring(1, mentionedValue.length() - 1).replaceAll("\\+", "=");
-                                                if (v.endsWith("=X")) {
-                                                    //v = v.replace("=X", "=@@$$" + a + "$$@@");
-                                                    int a = 0;
-                                                    if (!attributeXCount.containsKey(mentionedAttribute)) {
-                                                        attributeXCount.put(mentionedAttribute, 1);
-                                                    } else {
-                                                        a = attributeXCount.get(mentionedAttribute);
-                                                        attributeXCount.put(mentionedAttribute, attributeXCount.get(mentionedAttribute) + 1);
-                                                    }
-                                                    v = v.replace("=X", "=x" + a);
-                                                }
-                                                observedAttrValueSequence.add(v.toLowerCase());
-                                            } else if (!observedAttrValueSequence.get(observedAttrValueSequence.size() - 1).equals(mentionedValue)) {
-                                                String v = mentionedValue.substring(1, mentionedValue.length() - 1).replaceAll("\\+", "=");
-                                                if (v.endsWith("=X")) {
-                                                    //v = v.replace("=X", "=@@$$" + +a + "$$@@");
-                                                    int a = 0;
-                                                    if (!attributeXCount.containsKey(mentionedAttribute)) {
-                                                        attributeXCount.put(mentionedAttribute, 1);
-                                                    } else {
-                                                        a = attributeXCount.get(mentionedAttribute);
-                                                        attributeXCount.put(mentionedAttribute, attributeXCount.get(mentionedAttribute) + 1);
-                                                    }
-                                                    v = v.replace("=X", "=x" + a);
-                                                }
-                                                observedAttrValueSequence.add(v.toLowerCase());
-                                            }
-                                        }
-                                    } else if (!words[w].trim().isEmpty()) {
-                                        mentionedAttribute = mentionedValue.substring(1, mentionedValue.length() - 1);
-
-                                        if (!MR.getAttributes().containsKey(mentionedAttribute)) {
-                                            mentionedAttribute = "";
-                                        }
-                                    }
-                                }
                                 if (!words[w].trim().isEmpty()
-                                        && (realization.isEmpty()
-                                        || !words[w].trim().equals(realization.get(realization.size() - 1)))) {
+                                        && (observedWordSequence.isEmpty()
+                                        || !words[w].trim().equals(observedWordSequence.get(observedWordSequence.size() - 1)))) {
                                     if (words[w].trim().equals("s")
-                                            && (realization.get(realization.size() - 1).equals("child"))) {
-                                        realization.set(realization.size() - 1, "children");
+                                            && (observedWordSequence.get(observedWordSequence.size() - 1).equals("child"))) {
+                                        observedWordSequence.set(observedWordSequence.size() - 1, "children");
                                     } else if (words[w].trim().equals("addres")
                                             || words[w].trim().equals("adress")) {
-                                        realization.add("address");
+                                        observedWordSequence.add("address");
                                     } else if (words[w].trim().equals("mathch")) {
-                                        realization.add("match");
+                                        observedWordSequence.add("match");
                                     } else if (words[w].trim().equals("prefered")) {
-                                        realization.add("preferred");
+                                        observedWordSequence.add("preferred");
                                     } else if (words[w].trim().equals("relevent")) {
-                                        realization.add("relevant");
+                                        observedWordSequence.add("relevant");
                                     } else if (words[w].trim().equals("alloed")) {
-                                        realization.add("allowed");
+                                        observedWordSequence.add("allowed");
                                     } else if (words[w].trim().equals("avalible")
                                             || words[w].trim().equals("avalable")) {
-                                        realization.add("available");
+                                        observedWordSequence.add("available");
                                     } else if (words[w].trim().equals("tha")
                                             || words[w].trim().equals("te")) {
-                                        realization.add("the");
+                                        observedWordSequence.add("the");
                                     } else if (words[w].trim().equals("internect")) {
-                                        realization.add("internet");
+                                        observedWordSequence.add("internet");
                                     } else if (words[w].trim().equals("wether")) {
-                                        realization.add("whether");
+                                        observedWordSequence.add("whether");
                                     } else if (words[w].trim().equals("aplogize")) {
-                                        realization.add("apologize");
+                                        observedWordSequence.add("apologize");
                                     } else if (words[w].trim().equals("accomodations")) {
-                                        realization.add("accommodations");
+                                        observedWordSequence.add("accommodations");
                                     } else if (words[w].trim().equals("whould")) {
-                                        realization.add("would");
+                                        observedWordSequence.add("would");
                                     } else if (words[w].trim().equals("aceepted")) {
-                                        realization.add("accepted");
+                                        observedWordSequence.add("accepted");
                                     } else if (words[w].trim().equals("postode")) {
-                                        realization.add("postcode");
+                                        observedWordSequence.add("postcode");
                                     } else if (words[w].trim().equals("ive")) {
-                                        realization.add("i");
-                                        realization.add("have");
+                                        observedWordSequence.add("i");
+                                        observedWordSequence.add("have");
                                     } else if (words[w].trim().equals("waht")) {
-                                        realization.add("what");
+                                        observedWordSequence.add("what");
                                     } else if (words[w].trim().equals("neighborhood")) {
-                                        realization.add("neighbourhood");
+                                        observedWordSequence.add("neighbourhood");
                                     } else if (words[w].trim().equals("prefernce")) {
-                                        realization.add("preference");
+                                        observedWordSequence.add("preference");
                                     } else if (words[w].trim().equals("dont")) {
-                                        realization.add("don't");
+                                        observedWordSequence.add("don't");
                                     } else if (words[w].trim().equals("isnt")) {
-                                        realization.add("isn't");
+                                        observedWordSequence.add("isn't");
                                     } else if (words[w].trim().equals("intenet")
                                             || words[w].trim().equals("internetn")) {
-                                        realization.add("internet");
+                                        observedWordSequence.add("internet");
                                     } else if (words[w].trim().equals("cannote")) {
-                                        realization.add("cannot");
+                                        observedWordSequence.add("cannot");
                                     } else if (words[w].trim().equals("notels")) {
-                                        realization.add("hotels");
+                                        observedWordSequence.add("hotels");
                                     } else if (words[w].trim().equals("phne")) {
-                                        realization.add("phone");
+                                        observedWordSequence.add("phone");
                                     } else if (words[w].trim().equals("taht")) {
-                                        realization.add("that");
+                                        observedWordSequence.add("that");
                                     } else if (words[w].trim().equals("postdocde")) {
-                                        realization.add("postcode");
+                                        observedWordSequence.add("postcode");
                                     } else if (words[w].trim().equals("accpects")) {
-                                        realization.add("accepts");
+                                        observedWordSequence.add("accepts");
                                     } else if (words[w].trim().equals("doesn")
                                             || words[w].trim().equals("doesnt")
                                             || words[w].trim().equals("doesn")) {
-                                        realization.add("doesn't");
+                                        observedWordSequence.add("doesn't");
                                     } else if (words[w].trim().equals("restaurnats")) {
-                                        realization.add("restarnauts");
+                                        observedWordSequence.add("restarnauts");
                                     } else if (words[w].trim().equals("ther")
                                             || words[w].trim().equals("thers")) {
-                                        realization.add("there");
+                                        observedWordSequence.add("there");
+                                        
+                                    // The dataset treats the suffixes "s" and "-ly" as separate words
+                                    // We combine these suffixes with their preceding words but keep a cache with these changes to revert them before evaluation (we have to do this so that the token-based evaluation metrics are calculated in a consistent manner with Wen et al.'s)
                                     } else if (words[w].trim().equals("s")) {
-                                        if (realization.isEmpty()) {
-                                            realization.add(words[w].trim().toLowerCase());
-                                        } else if (realization.get(realization.size() - 1).startsWith(Action.TOKEN_X)) {
-                                            realization.add(words[w].trim().toLowerCase());
+                                        if (observedWordSequence.isEmpty()) {
+                                            observedWordSequence.add(words[w].trim().toLowerCase());
+                                        } else if (observedWordSequence.get(observedWordSequence.size() - 1).startsWith(Action.TOKEN_X)) {
+                                            observedWordSequence.add(words[w].trim().toLowerCase());
                                         } else {
-                                            getCompositeWordsInData().put(realization.get(realization.size() - 1) + "s", realization.get(realization.size() - 1) + " s");
-                                            realization.set(realization.size() - 1, realization.get(realization.size() - 1) + "s");
+                                            getCompositeSuffixesInData().put(observedWordSequence.get(observedWordSequence.size() - 1) + "s", observedWordSequence.get(observedWordSequence.size() - 1) + " s");
+                                            observedWordSequence.set(observedWordSequence.size() - 1, observedWordSequence.get(observedWordSequence.size() - 1) + "s");
                                         }
                                     } else if (words[w].trim().equals("-ly")) {
-                                        if (realization.isEmpty()) {
-                                            realization.add(words[w].trim().toLowerCase());
-                                        } else if (realization.get(realization.size() - 1).startsWith(Action.TOKEN_X)) {
-                                            realization.add(words[w].trim().toLowerCase());
+                                        if (observedWordSequence.isEmpty()) {
+                                            observedWordSequence.add(words[w].trim().toLowerCase());
+                                        } else if (observedWordSequence.get(observedWordSequence.size() - 1).startsWith(Action.TOKEN_X)) {
+                                            observedWordSequence.add(words[w].trim().toLowerCase());
                                         } else {
-                                            getCompositeWordsInData().put(realization.get(realization.size() - 1) + "ly", realization.get(realization.size() - 1) + " -ly");
-                                            realization.set(realization.size() - 1, realization.get(realization.size() - 1) + "ly");
+                                            getCompositeSuffixesInData().put(observedWordSequence.get(observedWordSequence.size() - 1) + "ly", observedWordSequence.get(observedWordSequence.size() - 1) + " -ly");
+                                            observedWordSequence.set(observedWordSequence.size() - 1, observedWordSequence.get(observedWordSequence.size() - 1) + "ly");
                                         }
                                     } else {
-                                        realization.add(words[w].trim().toLowerCase());
+                                        observedWordSequence.add(words[w].trim().toLowerCase());
                                     }
                                 }
                             }
                         }
 
-                        MR.getAttributes().keySet().forEach((attr) -> {
-                            MR.getAttributes().get(attr).stream().filter((value) -> (attr.equals("name") && value.equals("none"))).forEachOrdered((value) -> {
+                        //Probably deprecated, need to do some more tests
+                        MR.getAttributeValues().keySet().forEach((attr) -> {
+                            MR.getAttributeValues().get(attr).stream().filter((value) -> (attr.equals("name") && value.equals("none"))).forEachOrdered((value) -> {
                                 observedAttrValueSequence.add(0, attr.toLowerCase() + "=" + value.toLowerCase());
                             });
                         });
-
                         observedAttrValueSequence.add(Action.TOKEN_END);
-                        if (realization.size() > getMaxWordSequenceLength()) {
-                            setMaxWordSequenceLength(realization.size());
+                        
+                        // We store the maximum observed word sequence length, to use as a limit during generation
+                        if (observedWordSequence.size() > getMaxWordSequenceLength()) {
+                            setMaxWordSequenceLength(observedWordSequence.size());
                         }
 
-                        realization.forEach((word) -> {
+                        
+                        // We initialize the alignments between words and attribute/value pairs
+                        ArrayList<String> wordToAttrValueAlignment = new ArrayList<>();
+                        // And populate them with "unaligned" tokens (i.e. "[]") and punctuation alignments; we do the latter so we know to filter out punctuation when estimating the alignments in later stages
+                        observedWordSequence.forEach((word) -> {
                             if (word.trim().matches("[,.?!;:']")) {
-                                alignedRealization.add(Action.TOKEN_PUNCT);
+                                wordToAttrValueAlignment.add(Action.TOKEN_PUNCT);
                             } else {
-                                alignedRealization.add("[]");
+                                wordToAttrValueAlignment.add("[]");
                             }
                         });
+                        // And using both word sequence and initial alignments, we construct a draft sequence of word actions corresponding to the reference
+                        ArrayList<Action> directReferenceSequence = new ArrayList<>();
+                        for (int r = 0; r < observedWordSequence.size(); r++) {
+                            directReferenceSequence.add(new Action(observedWordSequence.get(r), wordToAttrValueAlignment.get(r)));
+                        }                                        
+                        // Finally, we construct the DatasetInstance
+                        DatasetInstance DI = new DatasetInstance(MR, directReferenceSequence, postProcessRef(MR, directReferenceSequence));
+                        // We add the evaluation references of all previously constructed DatasetInstances (that are identical to this one) as available evaluation references 
+                        getDatasetInstances().get(predicate).stream().filter((existingDI) -> (existingDI.getMeaningRepresentation().getAbstractMR().equals(DI.getMeaningRepresentation().getAbstractMR()))).map((existingDI) -> {
+                            existingDI.getEvaluationReferences().addAll(DI.getEvaluationReferences());
+                            return existingDI;
+                        }).forEachOrdered((existingDI) -> {
+                            // We add the direct reference of this DatasetInstance as an available evaluation reference to all previously constructed DatasetInstance that are identical to this one
+                            DI.getEvaluationReferences().addAll(existingDI.getEvaluationReferences());
+                        });
+                        getDatasetInstances().get(predicate).add(DI);
 
-                        //Calculate alignments
-                        HashMap<String, HashMap<String, Double>> alignments = new HashMap<>();
-                        MR.getAttributes().keySet().forEach((attr) -> {
-                            /*} else {
-                            for (String value : MR.getAttributes().get(attr)) {
-                            if (!value.equals("no")
-                            && !value.equals("yes")
-                            && !value.equals("none")) {
-                            System.out.println(attr + " " + value);
-                            }
-                            }
-                            }*/
- /*if (attr.equals("name")
-                            || attr.equals("type")
-                            || attr.equals("pricerange")
-                            || attr.equals("price")
-                            || attr.equals("phone")
-                            || attr.equals("address")
-                            || attr.equals("postcode")
-                            || attr.equals("area")
-                            || attr.equals("near")
-                            || attr.equals("food")
-                            || attr.equals("count")
-                            || attr.equals("goodformeal")) {*/
-                            MR.getAttributes().get(attr).stream().filter((value) -> (!value.equals("name=none")
+                        // Calculate the possible alignments between (non-delexicalized) attribute values and reference subphrases
+                        // We do this by comparing the values with n-gram subphrases of the reference, using character-level Levenshtein distance
+                        // These are used during the estimation of naive alignments, but also for tracking which values have possibly been expressed during generation
+                        HashMap<String, HashMap<String, Double>> observedValueAlignments = new HashMap<>();
+                        MR.getAttributeValues().keySet().forEach((attr) -> {
+                            MR.getAttributeValues().get(attr).stream().filter((value) -> (!value.equals("name=none")
                                     && !value.startsWith(Action.TOKEN_X)
                                     && !(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+")))).forEachOrdered((value) -> {
-                                String valueToCheck = value;
+                                String valueToCompare = value;
                                 if (value.equals("no")
                                         || value.equals("yes")
                                         || value.equals("yes or no")
                                         || value.equals("none")
-                                        //|| value.equals("dont_care")
                                         || value.equals("empty")) {
-                                    valueToCheck = attr;
-                                    alignments.put(valueToCheck + ":" + value, new HashMap<String, Double>());
+                                    // If the value is boolean or non-existant, we also compare using the attribute name
+                                    valueToCompare = attr;
+                                    observedValueAlignments.put(valueToCompare + ":" + value, new HashMap<String, Double>());
                                 } else {
-                                    alignments.put(valueToCheck, new HashMap<String, Double>());
+                                    observedValueAlignments.put(valueToCompare, new HashMap<String, Double>());
                                 }
-                                //For all ngrams
-                                for (int n = 1; n < realization.size(); n++) {
-                                    //Calculate all alignment similarities
-                                    for (int r = 0; r <= realization.size() - n; r++) {
-                                        boolean pass = true;
+                                //For all n-grams in the referenec
+                                for (int n = 1; n < observedWordSequence.size(); n++) {
+                                    //Calculate the similaritie between them and valueToCompare
+                                    for (int r = 0; r <= observedWordSequence.size() - n; r++) {
+                                        boolean compareAgainstNGram = true;
                                         for (int j = 0; j < n; j++) {
-                                            if (realization.get(r + j).startsWith(Action.TOKEN_X)
-                                                    || alignedRealization.get(r + j).equals(Action.TOKEN_PUNCT)
-                                                    || StringNLPUtilities.isArticle(realization.get(r + j))
-                                                    || realization.get(r + j).equalsIgnoreCase("and")
-                                                    || realization.get(r + j).equalsIgnoreCase("or")) {
-                                                pass = false;
+                                            if (observedWordSequence.get(r + j).startsWith(Action.TOKEN_X)
+                                                    || wordToAttrValueAlignment.get(r + j).equals(Action.TOKEN_PUNCT)
+                                                    || StringNLPUtilities.isArticle(observedWordSequence.get(r + j))
+                                                    || observedWordSequence.get(r + j).equalsIgnoreCase("and")
+                                                    || observedWordSequence.get(r + j).equalsIgnoreCase("or")) {
+                                                // We ignore n-grams that contain variables, punctuation, articles, or conjuctions
+                                                // In other words, we do not allow values to align with such n-grams
+                                                compareAgainstNGram = false;
                                             }
                                         }
-                                        if (pass) {
+                                        if (compareAgainstNGram) {
                                             String align = "";
                                             String compare = "";
                                             String backwardCompare = "";
                                             for (int j = 0; j < n; j++) {
+                                                // The coordinates of the alignment
                                                 align += (r + j) + " ";
-                                                compare += realization.get(r + j);
-                                                backwardCompare = realization.get(r + j) + backwardCompare;
+                                                compare += observedWordSequence.get(r + j);
+                                                backwardCompare = observedWordSequence.get(r + j) + backwardCompare;
                                             }
                                             align = align.trim();
 
-                                            Double distance = Levenshtein.getSimilarity(valueToCheck.toLowerCase(), compare.toLowerCase(), true);
-                                            Double backwardDistance = Levenshtein.getSimilarity(valueToCheck.toLowerCase(), backwardCompare.toLowerCase(), true);
+                                            // Calculate the character-level distance between the value and the nGram (in its original and reversed order)
+                                            Double distance = Levenshtein.getSimilarity(valueToCompare.toLowerCase(), compare.toLowerCase(), true);
+                                            Double backwardDistance = Levenshtein.getSimilarity(valueToCompare.toLowerCase(), backwardCompare.toLowerCase(), true);
 
+                                            // We keep the best distance score; note that the Levenshtein distance is normalized so that greater is better 
                                             if (backwardDistance > distance) {
                                                 distance = backwardDistance;
                                             }
+                                            // We ignore all nGrams that are less similar than a threshold
                                             if (distance > 0.3) {
                                                 if (value.equals("no")
                                                         || value.equals("yes")
                                                         || value.equals("yes or no")
                                                         || value.equals("none")
-                                                        //|| value.equals("dont_care")
                                                         || value.equals("empty")) {
-                                                    alignments.get(valueToCheck + ":" + value).put(align, distance);
+                                                    observedValueAlignments.get(valueToCompare + ":" + value).put(align, distance);
                                                 } else {
-                                                    alignments.get(valueToCheck).put(align, distance);
+                                                    observedValueAlignments.get(valueToCompare).put(align, distance);
                                                 }
                                             }
                                         }
@@ -2169,49 +2068,55 @@ public class SFX extends DatasetParser {
                             });
                         });
 
+                        // We filter out any values that haven't been aligned
                         HashSet<String> toRemove = new HashSet<>();
-                        for (String value : alignments.keySet()) {
-                            if (alignments.get(value).isEmpty()) {
+                        for (String value : observedValueAlignments.keySet()) {
+                            if (observedValueAlignments.get(value).isEmpty()) {
                                 toRemove.add(value);
                             }
                         }
                         for (String value : toRemove) {
-                            alignments.remove(value);
+                            observedValueAlignments.remove(value);
                         }
 
-                        while (!alignments.keySet().isEmpty()) {
+                        // We keep the best aligned nGrams; since we do not want the aligned nGrams to be overlapping, we remove any overlapping alignments after we pick each one
+                        while (!observedValueAlignments.keySet().isEmpty()) {
+                            // Find the best aligned nGram
                             Double max = Double.NEGATIVE_INFINITY;
                             String[] bestAlignment = new String[2];
-                            for (String value : alignments.keySet()) {
-                                for (String alignment : alignments.get(value).keySet()) {
-                                    if (alignments.get(value).get(alignment) > max) {
-                                        max = alignments.get(value).get(alignment);
+                            for (String value : observedValueAlignments.keySet()) {
+                                for (String alignment : observedValueAlignments.get(value).keySet()) {
+                                    if (observedValueAlignments.get(value).get(alignment) > max) {
+                                        max = observedValueAlignments.get(value).get(alignment);
                                         bestAlignment[0] = value;
                                         bestAlignment[1] = alignment;
                                     }
                                 }
                             }
 
+                            // Find the subphrase that corresponds to the best aligned nGram, according to the coordinates
                             ArrayList<String> alignedStr = new ArrayList<>();
                             String[] coords = bestAlignment[1].split(" ");
-
                             if (coords.length == 1) {
-                                alignedStr.add(realization.get(Integer.parseInt(coords[0].trim())));
+                                alignedStr.add(observedWordSequence.get(Integer.parseInt(coords[0].trim())));
                             } else {
                                 for (int a = Integer.parseInt(coords[0].trim()); a <= Integer.parseInt(coords[coords.length - 1].trim()); a++) {
-                                    alignedStr.add(realization.get(a));
+                                    alignedStr.add(observedWordSequence.get(a));
                                 }
                             }
 
+                            // Store the best aligned nGram
                             if (!getValueAlignments().containsKey(bestAlignment[0])) {
                                 getValueAlignments().put(bestAlignment[0], new HashMap<ArrayList<String>, Double>());
                             }
                             getValueAlignments().get(bestAlignment[0]).put(alignedStr, max);
 
-                            alignments.remove(bestAlignment[0]);
-                            alignments.keySet().forEach((value) -> {
+                            // And remove it from the observed ones for this instance
+                            observedValueAlignments.remove(bestAlignment[0]);
+                            // And also remove any other aligned nGrams that are overlapping with the best aligned nGram
+                            observedValueAlignments.keySet().forEach((value) -> {
                                 HashSet<String> alignmentsToBeRemoved = new HashSet<>();
-                                alignments.get(value).keySet().forEach((alignment) -> {
+                                observedValueAlignments.get(value).keySet().forEach((alignment) -> {
                                     String[] othCoords = alignment.split(" ");
                                     if (Integer.parseInt(coords[0].trim()) <= Integer.parseInt(othCoords[0].trim()) && (Integer.parseInt(coords[coords.length - 1].trim()) >= Integer.parseInt(othCoords[0].trim()))
                                             || (Integer.parseInt(othCoords[0].trim()) <= Integer.parseInt(coords[0].trim()) && Integer.parseInt(othCoords[othCoords.length - 1].trim()) >= Integer.parseInt(coords[0].trim()))) {
@@ -2219,68 +2124,22 @@ public class SFX extends DatasetParser {
                                     }
                                 });
                                 alignmentsToBeRemoved.forEach((alignment) -> {
-                                    alignments.get(value).remove(alignment);
+                                    observedValueAlignments.get(value).remove(alignment);
                                 });
                             });
+                            // We filter out any values that are no logner aligned (due to overlapping conflicts)
                             toRemove = new HashSet<>();
-                            for (String value : alignments.keySet()) {
-                                if (alignments.get(value).isEmpty()) {
+                            for (String value : observedValueAlignments.keySet()) {
+                                if (observedValueAlignments.get(value).isEmpty()) {
                                     toRemove.add(value);
                                 }
                             }
                             for (String value : toRemove) {
-                                alignments.remove(value);
+                                observedValueAlignments.remove(value);
                             }
                         }
-                        String previousAttr = "";
-                        for (int a = alignedRealization.size() - 1; a >= 0; a--) {
-                            if (alignedRealization.get(a).isEmpty() || alignedRealization.get(a).equals("[]")) {
-                                if (!previousAttr.isEmpty()) {
-                                    alignedRealization.set(a, previousAttr);
-                                }
-                            } else if (!alignedRealization.get(a).equals(Action.TOKEN_PUNCT)) {
-                                previousAttr = alignedRealization.get(a);
-                            } else {
-                                previousAttr = "";
-                            }
-                        }
-                        previousAttr = "";
-                        for (int a = 0; a < alignedRealization.size(); a++) {
-                            if (alignedRealization.get(a).isEmpty() || alignedRealization.get(a).equals("[]")) {
-                                if (!previousAttr.isEmpty()) {
-                                    alignedRealization.set(a, previousAttr);
-                                }
-                            } else if (!alignedRealization.get(a).equals(Action.TOKEN_PUNCT)) {
-                                previousAttr = alignedRealization.get(a);
-                            } else {
-                                previousAttr = "";
-                            }
-                        }
-
-                        //}
-                        ArrayList<Action> realizationActions = new ArrayList<>();
-                        for (int r = 0; r < realization.size(); r++) {
-                            realizationActions.add(new Action(realization.get(r), alignedRealization.get(r)));
-                        }
-
-                        //boolean existing = false;
                         getObservedAttrValueSequences().add(observedAttrValueSequence);
-                        DatasetInstance DI = new DatasetInstance(MR, realizationActions, postProcessRef(MR, realizationActions));
-                        getDatasetInstances().get(predicate).stream().filter((existingDI) -> (existingDI.getMeaningRepresentation().getAbstractMR().equals(DI.getMeaningRepresentation().getAbstractMR()))).map((existingDI) -> {
-                            //existing = true;
-                            //existingDI.mergeDatasetInstance(mentionedValueSequence, mentionedAttributeSequence, realizationActions);
-                            existingDI.getEvaluationReferences().addAll(DI.getEvaluationReferences());
-                            return existingDI;
-                        }).forEachOrdered((existingDI) -> {
-                            DI.getEvaluationReferences().addAll(existingDI.getEvaluationReferences());
-                        }); //if (existingDI.getMeaningRepresentation().equals(previousAMR)) {
-                        //if (existingDI.getMeaningRepresentation().getAttributes().equals(MR.getAttributes())) {
-                        //if (!existing) {
-                        //DatasetInstance DI = new DatasetInstance(MR, mentionedValueSequence, mentionedAttributeSequence, realizationActions);
-                        getDatasetInstances().get(predicate).add(DI);
-                        //}
                     }
-                    //}
                 }
             }
         } catch (JSONException ex) {
@@ -2351,8 +2210,8 @@ public class SFX extends DatasetParser {
             }
             initRealizations.stream().map((realization) -> {
                 HashMap<String, HashSet<String>> values = new HashMap<>();
-                di.getMeaningRepresentation().getAttributes().keySet().forEach((attr) -> {
-                    values.put(attr, new HashSet<>(di.getMeaningRepresentation().getAttributes().get(attr)));
+                di.getMeaningRepresentation().getAttributeValues().keySet().forEach((attr) -> {
+                    values.put(attr, new HashSet<>(di.getMeaningRepresentation().getAttributeValues().get(attr)));
                 });
                 ArrayList<Action> randomRealization = new ArrayList<Action>();
                 realization.forEach((a) -> {
@@ -2663,8 +2522,8 @@ public class SFX extends DatasetParser {
             }
             initRealizations.stream().map((realization) -> {
                 HashMap<String, HashSet<String>> values = new HashMap<>();
-                di.getMeaningRepresentation().getAttributes().keySet().forEach((attr) -> {
-                    values.put(attr, new HashSet<>(di.getMeaningRepresentation().getAttributes().get(attr)));
+                di.getMeaningRepresentation().getAttributeValues().keySet().forEach((attr) -> {
+                    values.put(attr, new HashSet<>(di.getMeaningRepresentation().getAttributeValues().get(attr)));
                 });
                 ArrayList<Action> randomRealization = new ArrayList<>();
                 for (int i = 0; i < realization.size(); i++) {
@@ -2969,9 +2828,9 @@ public class SFX extends DatasetParser {
             return di;
         }).forEachOrdered((di) -> {
             HashSet<String> attrValuesToBeMentioned = new HashSet<>();
-            di.getMeaningRepresentation().getAttributes().keySet().forEach((attribute) -> {
+            di.getMeaningRepresentation().getAttributeValues().keySet().forEach((attribute) -> {
                 int a = 0;
-                for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+                for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                     if (value.startsWith("\"x")) {
                         value = "x" + a;
                         a++;
@@ -2984,29 +2843,7 @@ public class SFX extends DatasetParser {
             di.getDirectReferenceSequence().stream().map((key) -> {
                 attrValuesToBeMentioned.remove(key.getAttribute());
                 return key;
-            }).map((key) -> {
-                if (key.getWord().trim().isEmpty()) {
-                    System.out.println("RRNATR " + di.getMeaningRepresentation().getMRstr());
-                    System.out.println("RRNATR " + di.getMeaningRepresentation().getAttributes());
-                    System.exit(0);
-                }
-                return key;
-            }).filter((key) -> (key.getAttribute().equals("[]")
-                    || key.getAttribute().isEmpty())).map((key) -> {
-                System.out.println("RRNATR " + di.getMeaningRepresentation().getMRstr());
-                System.out.println("RRNATR " + di.getMeaningRepresentation().getAttributes());
-                System.out.println("RRNATR " + di.getDirectReferenceSequence());
-                System.out.println("RRNATR " + key);
-                return key;
-            }).forEachOrdered((_item) -> {
-                System.exit(0);
             });
-            if (!attrValuesToBeMentioned.isEmpty()) {
-                System.out.println("EE " + di.getMeaningRepresentation().getMRstr());
-                System.out.println("EE " + di.getMeaningRepresentation().getAttributes());
-                System.out.println("EE " + di.getDirectReferenceSequence());
-                System.out.println(attrValuesToBeMentioned);
-            }
         });
         punctRealizations.keySet().forEach((di) -> {
             ArrayList<Action> punctRealization = punctRealizations.get(di);
@@ -3202,7 +3039,7 @@ public class SFX extends DatasetParser {
 
         if (availableAttributeActions.containsKey(predicate)) {
             availableAttributeActions.get(predicate).forEach((attribute) -> {
-                if (MR.getAttributes().keySet().contains(attribute)) {
+                if (MR.getAttributeValues().keySet().contains(attribute)) {
                     generalFeatures.put("feature_attr_inMR_" + attribute, 1.0);
                 } else {
                     generalFeatures.put("feature_attr_notInMR_" + attribute, 1.0);
@@ -3292,7 +3129,7 @@ public class SFX extends DatasetParser {
                     }
                 } else {
                     //Is attr in MR?
-                    if (MR.getAttributes().get(action) != null) {
+                    if (MR.getAttributeValues().get(action) != null) {
                         valueSpecificFeatures.get(action).put("global_feature_specific_isInMR", 1.0);
                     } else {
                         valueSpecificFeatures.get(action).put("global_feature_specific_isNotInMR", 1.0);
@@ -4415,7 +4252,7 @@ public class SFX extends DatasetParser {
         boolean previousIsTokenX = false;
         for (Action action : cleanActionList) {
             if (action.getWord().startsWith(Action.TOKEN_X)) {
-                predictedWordSequence += " " + di.getMeaningRepresentation().getDelexMap().get(action.getWord());
+                predictedWordSequence += " " + di.getMeaningRepresentation().getDelexicalizationMap().get(action.getWord());
                 previousIsTokenX = true;
             } else {
                 if (action.getWord().equals("-ly") && previousIsTokenX) {
@@ -4473,7 +4310,7 @@ public class SFX extends DatasetParser {
             if (!nlWord.equals(new Action(Action.TOKEN_START, ""))
                     && !nlWord.equals(new Action(Action.TOKEN_END, ""))) {
                 if (nlWord.getWord().startsWith(Action.TOKEN_X)) {
-                    cleanedWords += " " + mr.getDelexMap().get(nlWord.getWord());
+                    cleanedWords += " " + mr.getDelexicalizationMap().get(nlWord.getWord());
                     previousIsTokenX = true;
                 } else {
                     if (nlWord.getWord().equals("-ly") && previousIsTokenX) {
@@ -4531,12 +4368,12 @@ public class SFX extends DatasetParser {
      * @return
      */
     public boolean loadLists() {
-        String file1 = "getPredicates()_SF_" + getDataset();
-        String file2 = "attributes_SF_" + getDataset();
-        String file3 = "attributeValuePairs_SF_" + getDataset();
-        String file4 = "getValueAlignments()_SF_" + getDataset();
-        String file5 = "getDatasetInstances()_SF_" + getDataset();
-        String file6 = "maxLengths_SF_" + getDataset();
+        String file1 = "cache/getPredicates()_SF_" + getDataset();
+        String file2 = "cache/attributes_SF_" + getDataset();
+        String file3 = "cache/attributeValuePairs_SF_" + getDataset();
+        String file4 = "cache/getValueAlignments()_SF_" + getDataset();
+        String file5 = "cache/getDatasetInstances()_SF_" + getDataset();
+        String file6 = "cache/maxLengths_SF_" + getDataset();
         FileInputStream fin1 = null;
         ObjectInputStream ois1 = null;
         FileInputStream fin2 = null;
@@ -4641,12 +4478,12 @@ public class SFX extends DatasetParser {
      *
      */
     public void writeLists() {
-        String file1 = "getPredicates()_SF_" + getDataset();
-        String file2 = "attributes_SF_" + getDataset();
-        String file3 = "attributeValuePairs_SF_" + getDataset();
-        String file4 = "getValueAlignments()_SF_" + getDataset();
-        String file5 = "getDatasetInstances()_SF_" + getDataset();
-        String file6 = "maxLengths_SF_" + getDataset();
+        String file1 = "cache/getPredicates()_SF_" + getDataset();
+        String file2 = "cache/attributes_SF_" + getDataset();
+        String file3 = "cache/attributeValuePairs_SF_" + getDataset();
+        String file4 = "cache/getValueAlignments()_SF_" + getDataset();
+        String file5 = "cache/getDatasetInstances()_SF_" + getDataset();
+        String file6 = "cache/maxLengths_SF_" + getDataset();
         FileOutputStream fout1 = null;
         ObjectOutputStream oos1 = null;
         FileOutputStream fout2 = null;
@@ -4715,8 +4552,8 @@ public class SFX extends DatasetParser {
      * @return
      */
     public boolean loadLMs() {
-        String file2 = "wordLMs_SF_" + getDataset();
-        String file3 = "attrLMs_SF_" + getDataset();
+        String file2 = "cache/wordLMs_SF_" + getDataset();
+        String file3 = "cache/attrLMs_SF_" + getDataset();
         FileInputStream fin2 = null;
         ObjectInputStream ois2 = null;
         FileInputStream fin3 = null;
@@ -4771,8 +4608,8 @@ public class SFX extends DatasetParser {
      *
      */
     public void writeLMs() {
-        String file2 = "wordLMs_SF_" + getDataset();
-        String file3 = "attrLMs_SF_" + getDataset();
+        String file2 = "cache/wordLMs_SF_" + getDataset();
+        String file3 = "cache/attrLMs_SF_" + getDataset();
         FileOutputStream fout2 = null;
         ObjectOutputStream oos2 = null;
         FileOutputStream fout3 = null;
@@ -4807,8 +4644,8 @@ public class SFX extends DatasetParser {
      * @return
      */
     public boolean loadTrainingData(int dataSize) {
-        String file1 = "attrTrainingData" + getDataset() + "_" + dataSize;
-        String file2 = "wordTrainingData" + getDataset() + "_" + dataSize;
+        String file1 = "cache/attrTrainingData" + getDataset() + "_" + dataSize;
+        String file2 = "cache/wordTrainingData" + getDataset() + "_" + dataSize;
         FileInputStream fin1 = null;
         ObjectInputStream ois1 = null;
         FileInputStream fin2 = null;
@@ -4863,8 +4700,8 @@ public class SFX extends DatasetParser {
      * @param dataSize
      */
     public void writeTrainingData(int dataSize) {
-        String file1 = "attrTrainingData" + getDataset() + "_" + dataSize;
-        String file2 = "wordTrainingData" + getDataset() + "_" + dataSize;
+        String file1 = "cache/attrTrainingData" + getDataset() + "_" + dataSize;
+        String file2 = "cache/wordTrainingData" + getDataset() + "_" + dataSize;
         FileOutputStream fout1 = null;
         ObjectOutputStream oos1 = null;
         FileOutputStream fout2 = null;
@@ -4903,8 +4740,8 @@ public class SFX extends DatasetParser {
      */
     @Override
     public boolean loadInitClassifiers(int dataSize, HashMap<String, JAROW> trainedAttrClassifiers_0, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0) {
-        String file1 = "attrInitClassifiers" + getDataset() + "_" + dataSize;
-        String file2 = "wordInitClassifiers" + getDataset() + "_" + dataSize;
+        String file1 = "cache/attrInitClassifiers" + getDataset() + "_" + dataSize;
+        String file2 = "cache/wordInitClassifiers" + getDataset() + "_" + dataSize;
         FileInputStream fin1 = null;
         ObjectInputStream ois1 = null;
         FileInputStream fin2 = null;
@@ -4954,8 +4791,8 @@ public class SFX extends DatasetParser {
      */
     @Override
     public void writeInitClassifiers(int dataSize, HashMap<String, JAROW> trainedAttrClassifiers_0, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0) {
-        String file1 = "attrInitClassifiers" + getDataset() + "_" + dataSize;
-        String file2 = "wordInitClassifiers" + getDataset() + "_" + dataSize;
+        String file1 = "cache/attrInitClassifiers" + getDataset() + "_" + dataSize;
+        String file2 = "cache/wordInitClassifiers" + getDataset() + "_" + dataSize;
         FileOutputStream fout1 = null;
         ObjectOutputStream oos1 = null;
         FileOutputStream fout2 = null;
@@ -5016,8 +4853,8 @@ class InferSFXVectorsThread extends Thread {
         //Collections to track which attribute/value pairs have already be mentioned in the sequence and which are yet to be mentioned
         HashSet<String> attrValuesAlreadyMentioned = new HashSet<>();
         HashSet<String> attrValuesToBeMentioned = new HashSet<>();
-        for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-            for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+        for (String attribute : di.getMeaningRepresentation().getAttributeValues().keySet()) {
+            for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                 attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
             }
         }
@@ -5053,8 +4890,8 @@ class InferSFXVectorsThread extends Thread {
         // Reset the tracking collections
         attrValuesAlreadyMentioned = new HashSet<>();
         attrValuesToBeMentioned = new HashSet<>();
-        for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-            for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+        for (String attribute : di.getMeaningRepresentation().getAttributeValues().keySet()) {
+            for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                 attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
             }
         }

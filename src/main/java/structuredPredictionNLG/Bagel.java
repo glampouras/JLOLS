@@ -523,9 +523,9 @@ public class Bagel extends DatasetParser {
 
             HashSet<String> attrValuesToBeMentioned = new HashSet<>();
             HashSet<String> attrValuesAlreadyMentioned = new HashSet<>();
-            for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
+            for (String attribute : di.getMeaningRepresentation().getAttributeValues().keySet()) {
                 int a = 0;
-                for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+                for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                     if (value.startsWith("\"x")) {
                         value = "x" + a;
                         a++;
@@ -545,7 +545,7 @@ public class Bagel extends DatasetParser {
                     if (attrTrainingVector != null) {
                         Prediction predictAttr = classifierAttrs.get(predicate).predict(attrTrainingVector);
                         predictedAttr = predictAttr.getLabel().trim();
-                        if (!classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributes().keySet())) {
+                        if (!classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributeValues().keySet())) {
                             System.out.println("MR ATTR NOT IN CLASSIFIERS");
                             System.out.println(classifierAttrs.get(predicate).getCurrentWeightVectors().keySet());
                         }
@@ -597,11 +597,11 @@ public class Bagel extends DatasetParser {
             attrValuesToBeMentioned = new HashSet<>();
             attrValuesAlreadyMentioned = new HashSet<>();
             HashMap<String, ArrayList<String>> valuesToBeMentioned = new HashMap<>();
-            for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
-                for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+            for (String attribute : di.getMeaningRepresentation().getAttributeValues().keySet()) {
+                for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                     attrValuesToBeMentioned.add(attribute.toLowerCase() + "=" + value.toLowerCase());
                 }
-                valuesToBeMentioned.put(attribute, new ArrayList<>(di.getMeaningRepresentation().getAttributes().get(attribute)));
+                valuesToBeMentioned.put(attribute, new ArrayList<>(di.getMeaningRepresentation().getAttributeValues().get(attribute)));
             }
             HashSet<String> attrValuesToBeMentionedCopy = new HashSet<>(attrValuesToBeMentioned);
 
@@ -740,10 +740,10 @@ public class Bagel extends DatasetParser {
                 attrCoverage.put(predictedWordSequence, missingAttrs / attrSize);
             }
 
-            if (!mentionedAttrs.contains(di.getMeaningRepresentation().getAttributes())) {
+            if (!mentionedAttrs.contains(di.getMeaningRepresentation().getAttributeValues())) {
                 allPredictedWordSequences.add(predictedWordSequence);
                 predictedWordSequencesMRs.add(di.getMeaningRepresentation().getMRstr());
-                mentionedAttrs.add(di.getMeaningRepresentation().getAttributes());
+                mentionedAttrs.add(di.getMeaningRepresentation().getAttributeValues());
             }
 
             Sequence<IString> translation = IStrings.tokenize(NISTTokenizer.tokenize(predictedWordSequence.toLowerCase()));
@@ -1249,7 +1249,7 @@ public class Bagel extends DatasetParser {
                                 if (mentionedValue.contains("+") && !words[i].trim().isEmpty()) {
                                     mentionedAttribute = mentionedValue.substring(1, mentionedValue.indexOf('+'));
 
-                                    if (previousAMR.getAttributes().containsKey(mentionedAttribute)) {
+                                    if (previousAMR.getAttributeValues().containsKey(mentionedAttribute)) {
                                         if (observedAttrValueSequence.isEmpty()) {
                                             String v = mentionedValue.substring(1, mentionedValue.length() - 1).replaceAll("\\+", "=");
                                             if (v.endsWith("=X")) {
@@ -1283,7 +1283,7 @@ public class Bagel extends DatasetParser {
                                 } else if (!words[i].trim().isEmpty()) {
                                     mentionedAttribute = mentionedValue.substring(1, mentionedValue.length() - 1);
 
-                                    if (!previousAMR.getAttributes().containsKey(mentionedAttribute)) {
+                                    if (!previousAMR.getAttributeValues().containsKey(mentionedAttribute)) {
                                         mentionedAttribute = "";
                                     }
                                 }
@@ -1321,8 +1321,8 @@ public class Bagel extends DatasetParser {
                     valueAlignments.put(value, new HashSet());
                     }
                     valueAlignments.get(value).add(bAl);*/
-                    for (String attr : previousAMR.getAttributes().keySet()) {
-                        for (String value : previousAMR.getAttributes().get(attr)) {
+                    for (String attr : previousAMR.getAttributeValues().keySet()) {
+                        for (String value : previousAMR.getAttributeValues().get(attr)) {
                             if (attr.equals("name") && value.equals("none")) {
                                 observedAttrValueSequence.add(0, attr.toLowerCase() + "=" + value.toLowerCase());
 
@@ -1378,8 +1378,8 @@ public class Bagel extends DatasetParser {
 
                     //Calculate alignments
                     HashMap<String, HashMap<String, Double>> alignments = new HashMap<>();
-                    for (String attr : previousAMR.getAttributes().keySet()) {
-                        for (String value : previousAMR.getAttributes().get(attr)) {
+                    for (String attr : previousAMR.getAttributeValues().keySet()) {
+                        for (String value : previousAMR.getAttributeValues().get(attr)) {
                             if (!value.equals("name=none") && !(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+") || value.startsWith(Action.TOKEN_X))) {
                                 alignments.put(value, new HashMap<String, Double>());
                                 //For all ngrams
@@ -1626,9 +1626,9 @@ public class Bagel extends DatasetParser {
                     ArrayList<Action> realization = di.getDirectReferenceAttrValueSequence();
                     HashSet<String> attrValuesAlreadyMentioned = new HashSet<>();
                     HashSet<String> attrValuesToBeMentioned = new HashSet<>();
-                    for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
+                    for (String attribute : di.getMeaningRepresentation().getAttributeValues().keySet()) {
                         int a = 0;
-                        for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+                        for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                             if (value.startsWith("\"x")) {
                                 value = "x" + a;
                                 a++;
@@ -1662,9 +1662,9 @@ public class Bagel extends DatasetParser {
                     }
                     attrValuesAlreadyMentioned = new HashSet<>();
                     attrValuesToBeMentioned = new HashSet<>();
-                    for (String attribute : di.getMeaningRepresentation().getAttributes().keySet()) {
+                    for (String attribute : di.getMeaningRepresentation().getAttributeValues().keySet()) {
                         int a = 0;
-                        for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+                        for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                             if (value.startsWith("\"x")) {
                                 value = "x" + a;
                                 a++;
@@ -1793,8 +1793,8 @@ public class Bagel extends DatasetParser {
             }
             initRealizations.stream().map((realization) -> {
                 HashMap<String, HashSet<String>> values = new HashMap();
-                di.getMeaningRepresentation().getAttributes().keySet().forEach((attr) -> {
-                    values.put(attr, new HashSet(di.getMeaningRepresentation().getAttributes().get(attr)));
+                di.getMeaningRepresentation().getAttributeValues().keySet().forEach((attr) -> {
+                    values.put(attr, new HashSet(di.getMeaningRepresentation().getAttributeValues().get(attr)));
                 });
                 ArrayList<Action> randomRealization = new ArrayList<>();
                 for (int i = 0; i < realization.size(); i++) {
@@ -2260,7 +2260,7 @@ public class Bagel extends DatasetParser {
         });
         //Which attrs are in the MR and which are not
         availableAttributeActions.get(predicate).forEach((attribute) -> {
-            if (MR.getAttributes().keySet().contains(attribute)) {
+            if (MR.getAttributeValues().keySet().contains(attribute)) {
                 generalFeatures.put("feature_attr_inMR_" + attribute, 1.0);
             } else {
                 generalFeatures.put("feature_attr_notInMR_" + attribute, 1.0);
@@ -2703,7 +2703,7 @@ public class Bagel extends DatasetParser {
                 }
             } else {
                 //Is attr in MR?
-                if (MR.getAttributes().get(action) != null) {
+                if (MR.getAttributeValues().get(action) != null) {
                     //valueSpecificFeatures.get(action).put("feature_specific_isInMR", 1.0);
                     valueSpecificFeatures.get(action).put("global_feature_specific_isInMR", 1.0);
                 } else {

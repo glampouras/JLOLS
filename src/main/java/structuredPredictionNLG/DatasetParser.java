@@ -628,7 +628,7 @@ public abstract class DatasetParser {
         return contentLMsPerPredicate;
     }
 
-    public HashMap<String, String> getCompositeWordsInData() {
+    public HashMap<String, String> getCompositeSuffixesInData() {
         return compositeWordsInData;
     }
 

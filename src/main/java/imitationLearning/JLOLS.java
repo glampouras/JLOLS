@@ -487,7 +487,7 @@ class runSFXLOLSOnInstance extends Thread {
 
             //ALTERNATIVE ATTRS
             TObjectDoubleHashMap<String> costs = new TObjectDoubleHashMap<>();
-            datasetParser.getAvailableContentActions().get(predicate).stream().filter((attr) -> (di.getMeaningRepresentation().getAttributes().keySet().contains(attr))).forEachOrdered((attr) -> {
+            datasetParser.getAvailableContentActions().get(predicate).stream().filter((attr) -> (di.getMeaningRepresentation().getAttributeValues().keySet().contains(attr))).forEachOrdered((attr) -> {
                 costs.put(attr.toLowerCase().trim(), 1.0);
             });
             costs.put(Action.TOKEN_END.toLowerCase().trim(), 1.0);
@@ -503,7 +503,7 @@ class runSFXLOLSOnInstance extends Thread {
                     if (value.isEmpty()
                             && !attr.equals("empty")) {
                         eligibleWord = false;
-                    } else if (!di.getMeaningRepresentation().getAttributes().containsKey(attr)
+                    } else if (!di.getMeaningRepresentation().getAttributeValues().containsKey(attr)
                             && !(value.equals("empty") && attr.equals("empty"))) {
                         eligibleWord = false;
                     } else {
@@ -1190,9 +1190,9 @@ class runSFXLOLSOnInstance extends Thread {
         ArrayList<String> predictedAttrValues = new ArrayList<>();
         HashSet<String> attrValuesAlreadyMentioned = new HashSet<>();
         HashSet<String> attrValuesToBeMentioned = new HashSet<>();
-        di.getMeaningRepresentation().getAttributes().keySet().forEach((attribute) -> {
+        di.getMeaningRepresentation().getAttributeValues().keySet().forEach((attribute) -> {
             int a = 0;
-            for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+            for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                 if (value.startsWith("\"x")) {
                     value = "x" + a;
                     a++;
@@ -1313,9 +1313,9 @@ class runSFXLOLSOnInstance extends Thread {
         ArrayList<String> predictedAttributes = new ArrayList<>();
 
         HashMap<String, ArrayList<String>> valuesToBeMentioned = new HashMap<>();
-        di.getMeaningRepresentation().getAttributes().keySet().stream().map((attribute) -> {
+        di.getMeaningRepresentation().getAttributeValues().keySet().stream().map((attribute) -> {
             int a = 0;
-            for (String value : di.getMeaningRepresentation().getAttributes().get(attribute)) {
+            for (String value : di.getMeaningRepresentation().getAttributeValues().get(attribute)) {
                 if (value.startsWith("\"x")) {
                     value = "x" + a;
                     a++;
@@ -1326,7 +1326,7 @@ class runSFXLOLSOnInstance extends Thread {
             }
             return attribute;
         }).forEachOrdered((attribute) -> {
-            valuesToBeMentioned.put(attribute, new ArrayList<>(di.getMeaningRepresentation().getAttributes().get(attribute)));
+            valuesToBeMentioned.put(attribute, new ArrayList<>(di.getMeaningRepresentation().getAttributeValues().get(attribute)));
         });
         if (attrValuesToBeMentioned.isEmpty()) {
             attrValuesToBeMentioned.add("empty=empty");
