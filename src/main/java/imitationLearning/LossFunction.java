@@ -28,11 +28,63 @@ public class LossFunction {
      * @return
      */
     public static double getCostMetric(String s1, ArrayList<String> s2s, Double coverageError) {
+        int avgSwitch = 0;
+        int maxSwitch = 1;
+        int oldSwitch = 2;
+        int sw = oldSwitch;
         switch (metric) {
             case "B":
-                return getBLEU(s1, s2s);
+                if (sw == avgSwitch) {                    
+                    double avg = 0.0;
+                    int count = 0;
+                    for (String s2 : s2s) {
+                        ArrayList<String> newSet = new ArrayList<String>();
+                        newSet.add(s2);
+                        avg += getBLEU(s1, newSet);
+                        count++;
+                    }
+                    avg /= count;                            
+                    return avg;                    
+                } else if (sw == maxSwitch) {                    
+                    double max = 0.0;
+                    for (String s2 : s2s) {
+                        ArrayList<String> newSet = new ArrayList<String>();
+                        newSet.add(s2);
+                        double score = getBLEU(s1, newSet);
+                        if (score > max) {
+                            max = score;
+                        }
+                    }
+                    return max;
+                } else {
+                    return getBLEU(s1, s2s);
+                }
             case "R":
-                return getROUGE(s1, s2s);
+                if (sw == avgSwitch) {                    
+                    double avg = 0.0;
+                    int count = 0;
+                    for (String s2 : s2s) {
+                        ArrayList<String> newSet = new ArrayList<String>();
+                        newSet.add(s2);
+                        avg += getROUGE(s1, newSet);
+                        count++;
+                    }
+                    avg /= count;                            
+                    return avg;                    
+                } else if (sw == maxSwitch) {                    
+                    double max = 0.0;
+                    for (String s2 : s2s) {
+                        ArrayList<String> newSet = new ArrayList<String>();
+                        newSet.add(s2);
+                        double score = getROUGE(s1, newSet);
+                        if (score > max) {
+                            max = score;
+                        }
+                    }
+                    return max;
+                } else {
+                    return getROUGE(s1, s2s);
+                }
             case "BC":
                 if (coverageError == -1.0) {
                     return getBLEU(s1, s2s);
@@ -44,10 +96,58 @@ public class LossFunction {
                 }
                 return (getROUGE(s1, s2s) + coverageError) / 2.0;
             case "BRC":
-                if (coverageError == -1.0) {
-                    return (getBLEU(s1, s2s) + getROUGE(s1, s2s)) / 2.0;
+                if (sw == avgSwitch) {
+                    if (coverageError == -1.0) {
+                        double avg = 0.0;
+                        int count = 0;
+                        for (String s2 : s2s) {
+                            ArrayList<String> newSet = new ArrayList<String>();
+                            newSet.add(s2);
+                            avg += (getBLEU(s1, newSet) + getROUGE(s1, newSet)) / 2.0;
+                            count++;
+                        }
+                        avg /= count;                            
+                        return avg;
+                    }
+                    double avg = 0.0;
+                    int count = 0;
+                    for (String s2 : s2s) {
+                        ArrayList<String> newSet = new ArrayList<String>();
+                        newSet.add(s2);
+                        avg += (getBLEU(s1, newSet) + getROUGE(s1, newSet) + coverageError) / 3.0;
+                        count++;
+                    }
+                    avg /= count;                            
+                    return avg;
+                } else if (sw == maxSwitch) {
+                    if (coverageError == -1.0) {
+                        double max = 0.0;
+                        for (String s2 : s2s) {
+                            ArrayList<String> newSet = new ArrayList<String>();
+                            newSet.add(s2);
+                            double score = (getBLEU(s1, newSet) + getROUGE(s1, newSet)) / 2.0;
+                            if (score > max) {
+                                max = score;
+                            }
+                        }
+                        return max;
+                    }
+                    double max = 0.0;
+                    for (String s2 : s2s) {
+                        ArrayList<String> newSet = new ArrayList<String>();
+                        newSet.add(s2);
+                        double score = (getBLEU(s1, newSet) + getROUGE(s1, newSet)) / 2.0;
+                        if (score > max) {
+                            max = score;
+                        }
+                    }
+                    return max;
+                } else {                
+                    if (coverageError == -1.0) {
+                        return (getBLEU(s1, s2s) + getROUGE(s1, s2s)) / 2.0;
+                    }
+                    return (getBLEU(s1, s2s) + getROUGE(s1, s2s) + coverageError) / 3.0;
                 }
-                return (getBLEU(s1, s2s) + getROUGE(s1, s2s) + coverageError) / 3.0;
             case "BR":
                 return (getBLEU(s1, s2s) + getROUGE(s1, s2s)) / 2.0;
             default:

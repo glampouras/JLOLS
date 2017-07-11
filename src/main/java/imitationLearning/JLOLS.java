@@ -119,7 +119,6 @@ public class JLOLS {
                         totalTrainingWordInstances.get(predicate).put(attribute, new ArrayList<Instance>());
                     }
                     totalTrainingWordInstances.get(predicate).get(attribute).addAll(datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute));
-                } else {
                 }
             });
         });
@@ -158,7 +157,7 @@ public class JLOLS {
             trainingDataPerPredicate.get(di.getMeaningRepresentation().getPredicate()).add(di);
         });
 
-        double beta = 1.0;
+        double beta;
         for (int e = 0; e < epochs; e++) {
             wordSequenceCache = new WordSequenceCache<>(2_000_000, 500_000, 10_000);
             runSFXLOLSOnInstance.avgContentErrors = 0;
@@ -444,6 +443,7 @@ class runSFXLOLSOnInstance extends Thread {
     ConcurrentHashMap<DatasetInstance, ConcurrentHashMap<String, ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>>> newWordTrainingInstances;
 
     boolean printDebugInfo = false;
+    static boolean useAllRefsInLoss = false;
 
     public static int avgContentErrors;
     public static int avgWordErrors;
@@ -906,7 +906,6 @@ class runSFXLOLSOnInstance extends Thread {
     public Double getReferencePolicyRollOutCost_Content(ActionSequence rollInSeq, DatasetInstance di, HashMap<String, HashSet<Action>> availableWordActions) {
         HashMap<ActionSequence, ArrayList<Action>> refs = new HashMap<>();
         refs.put(new ActionSequence(di.getDirectReferenceAttrValueSequence(), false), di.getDirectReferenceAttrValueSequence());
-
         if (rollInSeq.getLength_NoBorderTokens_NoPunct() > 1 && rollInSeq.getSequence().get(rollInSeq.getSequence().size() - 1).getWord().equals(rollInSeq.getSequence().get(rollInSeq.getSequence().size() - 2).getWord())) {
             //Do not repeat the same word twice in a row
             return 1.0;
@@ -977,7 +976,6 @@ class runSFXLOLSOnInstance extends Thread {
     public Double getReferencePolicyRollOutCost_Words(ActionSequence rollInSeq, DatasetInstance di, HashMap<String, HashSet<Action>> availableWordActions) {
         HashMap<ActionSequence, ArrayList<Action>> refs = new HashMap<>();
         refs.put(new ActionSequence(di.getDirectReferenceSequence(), true), di.getDirectReferenceSequence());
-
         if (rollInSeq.getLength_NoBorderTokens_NoPunct() > 1 && rollInSeq.getSequence().get(rollInSeq.getSequence().size() - 1).getWord().equals(rollInSeq.getSequence().get(rollInSeq.getSequence().size() - 2).getWord())) {
             //Do not repeat the same word twice in a row
             if (printDebugInfo) {
@@ -1017,6 +1015,13 @@ class runSFXLOLSOnInstance extends Thread {
                     }*/
                     ArrayList<String> refWindows = new ArrayList<>();
                     refWindows.add(di.getDirectReference());
+                    if (useAllRefsInLoss) {
+                        for (String indirectRef : di.getEvaluationReferences()) {
+                            if (!refWindows.contains(indirectRef)) {
+                                refWindows.add(indirectRef);
+                            }
+                        }
+                    }
 
                     String key = "REF_WORDCOST|" + rollInSeq.getSequence().toString() + "|" + refWindows.toString();
                     Double cost = JLOLS.costCache.get(key);
@@ -1150,6 +1155,13 @@ class runSFXLOLSOnInstance extends Thread {
 
             ArrayList<String> refWindows = new ArrayList<>();
             refWindows.add(di.getDirectReference());
+            if (useAllRefsInLoss) {
+                for (String indirectRef : di.getEvaluationReferences()) {
+                    if (!refWindows.contains(indirectRef)) {
+                        refWindows.add(indirectRef);
+                    }
+                }
+            }
 
             String key = "LEARNED_WORDCOST|" + rollOut + "|" + refWindows.toString();
             Double cost = JLOLS.costCache.get(key);
