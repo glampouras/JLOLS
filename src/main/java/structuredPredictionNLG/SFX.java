@@ -101,7 +101,7 @@ public class SFX extends DatasetParser {
             wenFile = "results/wenResults/sfxrest.log";
         }
         
-        if (true || !loadLists()) {
+        if (!loadLists()) {
             // Populate the predicate, attribute, attribute/value, and value alignment collections
             createLists(dataFile);
             writeLists();
@@ -898,8 +898,8 @@ public class SFX extends DatasetParser {
                             predictedAttr = predictAttr.getLabel().trim();
 
                             if (!classifierAttrs.get(predicate).getCurrentWeightVectors().keySet().containsAll(di.getMeaningRepresentation().getAttributeValues().keySet())) {
-                                System.out.println("MR ATTR NOT IN CLASSIFIERS");
-                                System.out.println(classifierAttrs.get(predicate).getCurrentWeightVectors().keySet());
+                                //System.out.println("MR ATTR NOT IN CLASSIFIERS");
+                                //System.out.println(classifierAttrs.get(predicate).getCurrentWeightVectors().keySet());
                             }
                             String predictedValue = "";
                             if (!predictedAttr.equals(Action.TOKEN_END)) {

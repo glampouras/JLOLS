@@ -469,6 +469,9 @@ public abstract class DatasetParser {
     abstract public void writeInitClassifiers(int dataSize, HashMap<String, JAROW> trainedAttrClassifiers_0, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0);
 
     public ArrayList<DatasetInstance> getTrainingData() {
+        if (trainingData.size() > 100) {
+            trainingData = new ArrayList<DatasetInstance>(trainingData.subList(0, 100));
+        }
         return trainingData;
     }
 

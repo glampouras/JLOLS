@@ -54,15 +54,12 @@ import similarity_measures.Rouge;
 import simpleLM.SimpleLM;
 
 
+/**
+ * Implementation of a DatasetParse for the BAGEL introduced by Mairesse et al. (2010)
+ * @author Gerasimos Lampouras
+ * @organization University of Sheffield
+ */
 public class Bagel extends DatasetParser {
-
-    HashMap<String, HashSet<String>> availableAttributeActions = new HashMap<>();
-    HashMap<String, HashSet<String>> attributeValuePairs = new HashMap<>();
-    HashMap<String, HashMap<MeaningRepresentation, HashSet<String>>> meaningReprs = new HashMap<>();
-    HashMap<String, ArrayList<DatasetInstance>> datasetInstances = new HashMap<>();
-    HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments = new HashMap<>();
-    HashMap<ArrayList<Action>, Action> punctuationPatterns = new HashMap<>();
-    ArrayList<String> predicates = new ArrayList<>();
 
     /**
      *
@@ -78,41 +75,20 @@ public class Bagel extends DatasetParser {
      *
      */
     public ArrayList<Double> crossBLEUSmooth = new ArrayList<>();
-    static final int SEED = 13;
-    boolean useAlignments = false;
-    private HashMap<String, ArrayList<Instance>> predicateAttrTrainingData;
-    private HashMap<String, HashMap<String, ArrayList<Instance>>> predicateWordTrainingData;
-
-    SimpleLM wordLM;
-    HashMap<String, SimpleLM> wordLMsPerPredicate = new HashMap<>();
-    HashMap<String, SimpleLM> attrLMsPerPredicate = new HashMap<>();
+    
     final static int THREADS_COUNT = Runtime.getRuntime().availableProcessors();
     static int fold = 0;
 
     /**
-     *
+     * Main method; initialized a new DatasetParser for the BAGEL dataset, and performs imitation learning on the it.
      * @param args
      */
     public static void main(String[] args) {
-        boolean useDAggerArg = false;
-        boolean useLolsWord = true;
-
-        fold = Integer.parseInt(args[0]);
-        JLOLS.sentenceCorrectionFurtherSteps = Integer.parseInt(args[1]);
-        JLOLS.p = Double.parseDouble(args[2]);
-
-        if (!args[3].isEmpty()
-                && (args[3].equals("B")
-                || args[3].equals("R")
-                || args[3].equals("BC")
-                || args[3].equals("RC")
-                || args[3].equals("BRC")
-                || args[3].equals("BR"))) {
-            LossFunction.metric = args[3];
-        }
-
-        Bagel bagel = new Bagel();
-        bagel.runImitationLearning(useDAggerArg, useLolsWord);
+        Bagel bagel = new Bagel(args);
+        
+        bagel.parseDataset();
+        bagel.createTrainingData();
+        bagel.performImitationLearning();
     }
 
     /**
@@ -259,31 +235,6 @@ public class Bagel extends DatasetParser {
                             }
                             MRstr = MRstr.replaceAll("inform\\(", "").replaceAll("&", ",").replaceAll("\\)", "");
 
-                            /*HashMap<String, Integer> attrXIndeces = new HashMap<>();
-                            HashMap<String, HashSet<String>> attrs = new HashMap<>();
-                            String[] attrsToBe = line.trim().split("&");
-                            for (String s : attrsToBe) {
-                            String[] comps = s.trim().split("=");
-                            String attr = comps[0].trim().replace("inform(", "");
-                            if (!attrs.containsKey(attr)) {
-                            attrs.put(attr, new HashSet<String>());
-                            }
-                            String value = comps[1].trim().replace(")", "");
-                            if (value.startsWith("X-")) {
-                            int index = 0;
-                            if (!attrXIndeces.containsKey(attr)) {
-                            attrXIndeces.put(attr, 1);
-                            } else {
-                            index = attrXIndeces.get(attr);
-                            attrXIndeces.put(attr, index + 1);
-                            }
-                            value = "X" + index + "";
-                            } else if (value.startsWith("\"")) {
-                            value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
-                            }
-                            attrs.get(attr.toLowerCase()).add(value.toLowerCase());
-                            }
-                            testMRs.add(attrs);*/
                             testMRs.add(MRstr);
                         }
                     }
@@ -424,7 +375,7 @@ public class Bagel extends DatasetParser {
                 if (setToGo) {
                     JLOLS JDWords = new JLOLS(this);
                     /*Object[] LOLSResults = */
-                    JDWords.runLOLS(availableAttributeActions, trainingData, predicateAttrTrainingData, predicateWordTrainingData, availableWordActions, valueAlignments, wordRefRolloutChance, testingData, detailedResults);
+                    JDWords.runLOLS(availableAttributeActions, trainingData, predicateAttrTrainingData, predicateWordTrainingData, availableWordActions, getValueAlignments(), wordRefRolloutChance, testingData, detailedResults);
                     //JDWords.runLOLS(fold, availableAttributeActions.get(predicate), trainingData, predicateAttrTrainingData.get(predicate), predicateWordTrainingData.get(predicate), availableWordActions.get(predicate), valueAlignments, wordRefRolloutChance, testingData);
 
                     //classifiersAttrs.put(predicate, (JAROW) LOLSResults[0]);
@@ -677,7 +628,7 @@ public class Bagel extends DatasetParser {
                                                 && !(valueTBM.matches("\"[xX][0-9]+\"")
                                                 || valueTBM.matches("[xX][0-9]+")
                                                 || valueTBM.startsWith(Action.TOKEN_X))) {
-                                            for (ArrayList<String> alignedStr : valueAlignments.get(valueTBM).keySet()) {
+                                            for (ArrayList<String> alignedStr : getValueAlignments().get(valueTBM).keySet()) {
                                                 if (endsWith(subPhrase, alignedStr)) {
                                                     isValueMentioned = true;
                                                     break;
@@ -698,7 +649,7 @@ public class Bagel extends DatasetParser {
                                             if (!(value.matches("\"[xX][0-9]+\"")
                                                     || value.matches("[xX][0-9]+")
                                                     || value.startsWith(Action.TOKEN_X))) {
-                                                for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
+                                                for (ArrayList<String> alignedStr : getValueAlignments().get(value).keySet()) {
                                                     if (endsWith(subPhrase, alignedStr)) {
                                                         mentionedAttrValue = attrValueTBM;
                                                         break;
@@ -1059,7 +1010,7 @@ public class Bagel extends DatasetParser {
         predicates = new ArrayList<>();
         availableAttributeActions = new HashMap<>();
         attributeValuePairs = new HashMap<>();
-        valueAlignments = new HashMap<>();
+        getValueAlignments() = new HashMap<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(dataFile))) {
             String line;
@@ -1452,10 +1403,10 @@ public class Bagel extends DatasetParser {
                             }
                         }
 
-                        if (!valueAlignments.containsKey(bestAlignment[0])) {
-                            valueAlignments.put(bestAlignment[0], new HashMap<ArrayList<String>, Double>());
+                        if (!getValueAlignments().containsKey(bestAlignment[0])) {
+                            getValueAlignments().put(bestAlignment[0], new HashMap<ArrayList<String>, Double>());
                         }
-                        valueAlignments.get(bestAlignment[0]).put(alignedStr, max);
+                        getValueAlignments().get(bestAlignment[0]).put(alignedStr, max);
 
                         alignments.remove(bestAlignment[0]);
                         alignments.keySet().forEach((value) -> {
@@ -1730,7 +1681,7 @@ public class Bagel extends DatasetParser {
                                         isValueMentioned = true;
                                     } else if (!realization.get(w).getWord().startsWith(Action.TOKEN_X)
                                             && !(valueTBM.matches("[xX][0-9]+") || valueTBM.matches("\"[xX][0-9]+\"") || valueTBM.startsWith(Action.TOKEN_X))) {
-                                        for (ArrayList<String> alignedStr : valueAlignments.get(valueTBM).keySet()) {
+                                        for (ArrayList<String> alignedStr : getValueAlignments().get(valueTBM).keySet()) {
                                             if (endsWith(subPhrase, alignedStr)) {
                                                 isValueMentioned = true;
                                                 break;
@@ -1750,7 +1701,7 @@ public class Bagel extends DatasetParser {
                                             if (!(value.matches("\"[xX][0-9]+\"")
                                                     || value.matches("[xX][0-9]+")
                                                     || value.startsWith(Action.TOKEN_X))) {
-                                                for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
+                                                for (ArrayList<String> alignedStr : getValueAlignments().get(value).keySet()) {
                                                     if (endsWith(subPhrase, alignedStr)) {
                                                         mentionedAttrValue = attrValueTBM;
                                                         break;
@@ -1809,7 +1760,7 @@ public class Bagel extends DatasetParser {
                 values.keySet().stream().forEach((String attr) -> {
                     values.get(attr).stream().filter((value) -> (!value.equals("placetoeat")
                             && !(value.matches("\"[xX][0-9]+\"") || value.matches("[xX][0-9]+") || value.startsWith(Action.TOKEN_X)))).forEach((value) -> {
-                                valueAlignments.get(value).keySet().stream().forEach((align) -> {
+                                getValueAlignments().get(value).keySet().stream().forEach((align) -> {
                                     int n = align.size();
                                     for (int i = 0; i <= randomRealization.size() - n; i++) {
                                         ArrayList<String> compare = new ArrayList<String>();
@@ -1819,10 +1770,10 @@ public class Bagel extends DatasetParser {
                                             indexAlignment.add(i + j);
                                         }
                                         if (compare.equals(align)) {
-                                            if (!indexAlignments.containsKey(valueAlignments.get(value).get(align))) {
-                                                indexAlignments.put(valueAlignments.get(value).get(align), new HashMap<>());
+                                            if (!indexAlignments.containsKey(getValueAlignments().get(value).get(align))) {
+                                                indexAlignments.put(getValueAlignments().get(value).get(align), new HashMap<>());
                                             }
-                                            indexAlignments.get(valueAlignments.get(value).get(align)).put(attr + "=" + value, indexAlignment);
+                                            indexAlignments.get(getValueAlignments().get(value).get(align)).put(attr + "=" + value, indexAlignment);
                                         }
                                     }
                                 });
@@ -2113,7 +2064,7 @@ public class Bagel extends DatasetParser {
                 }
             }
             if (!bestAction.getWord().isEmpty()) {
-                punctuationPatterns.put(punct, bestAction);
+                getPunctuationPatterns().put(punct, bestAction);
             }
         });
     }
@@ -3552,8 +3503,8 @@ public class Bagel extends DatasetParser {
                 });
             });
             if (!action.getWord().startsWith(Action.TOKEN_X)) {
-                for (String value : valueAlignments.keySet()) {
-                    for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
+                for (String value : getValueAlignments().keySet()) {
+                    for (ArrayList<String> alignedStr : getValueAlignments().get(value).keySet()) {
                         if (alignedStr.get(0).equals(action.getWord())) {
                             if (mentionedValues.contains(value)) {
                                 //valueSpecificFeatures.get(action.getWord()).put("feature_specific_beginsValue_alreadyMentioned", 1.0);
@@ -3614,8 +3565,8 @@ public class Bagel extends DatasetParser {
 
                     if (!prevWord.equals("@@")) {
                         boolean alignmentIsOpen = false;
-                        for (String value : valueAlignments.keySet()) {
-                            for (ArrayList<String> alignedStr : valueAlignments.get(value).keySet()) {
+                        for (String value : getValueAlignments().keySet()) {
+                            for (ArrayList<String> alignedStr : getValueAlignments().get(value).keySet()) {
                                 for (int i = 0; i < alignedStr.size() - 1; i++) {
                                     if (alignedStr.get(i).equals(prevWord)
                                             && endsWith(generatedPhrase, new ArrayList<String>(alignedStr.subList(0, i + 1)))) {
@@ -3744,7 +3695,7 @@ public class Bagel extends DatasetParser {
 
         }
 
-        punctuationPatterns.keySet().forEach((surrounds) -> {
+        getPunctuationPatterns().keySet().forEach((surrounds) -> {
             int beforeNulls = 0;
             if (surrounds.get(0) == null) {
                 beforeNulls++;
@@ -3778,7 +3729,7 @@ public class Bagel extends DatasetParser {
                 }
                 if (matches && m > 0) {
                     matched.add(surrounds);
-                    processedWordSequence.add(i + 2, punctuationPatterns.get(surrounds));
+                    processedWordSequence.add(i + 2, getPunctuationPatterns().get(surrounds));
                 }
             }
         });
@@ -4295,12 +4246,12 @@ public class Bagel extends DatasetParser {
                 fin4 = new FileInputStream(file4);
                 ois4 = new ObjectInputStream(fin4);
                 Object o4 = ois4.readObject();
-                if (valueAlignments == null) {
+                if (getValueAlignments() == null) {
                     if (o4 instanceof HashMap) {
-                        valueAlignments = new HashMap<String, HashMap<ArrayList<String>, Double>>((Map<? extends String, ? extends HashMap<ArrayList<String>, Double>>) o4);
+                        getValueAlignments() = new HashMap<String, HashMap<ArrayList<String>, Double>>((Map<? extends String, ? extends HashMap<ArrayList<String>, Double>>) o4);
                     }
                 } else if (o4 instanceof HashMap) {
-                    valueAlignments.putAll((Map<? extends String, ? extends HashMap<ArrayList<String>, Double>>) o4);
+                    getValueAlignments().putAll((Map<? extends String, ? extends HashMap<ArrayList<String>, Double>>) o4);
                 }
                 ///////////////////
                 fin5 = new FileInputStream(file5);
@@ -4377,7 +4328,7 @@ public class Bagel extends DatasetParser {
             ///////////////////
             fout4 = new FileOutputStream(file4);
             oos4 = new ObjectOutputStream(fout4);
-            oos4.writeObject(valueAlignments);
+            oos4.writeObject(getValueAlignments());
             ///////////////////
             fout5 = new FileOutputStream(file5);
             oos5 = new ObjectOutputStream(fout5);

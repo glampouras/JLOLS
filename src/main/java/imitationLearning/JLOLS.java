@@ -79,49 +79,17 @@ public class JLOLS {
     public JLOLS(DatasetParser dataset) {
         this.datasetParser = dataset;
     }
-
+    
+    ArrayList<HashMap<String, JAROW>> trainedAttrClassifiers = new ArrayList<>();
+    ArrayList<HashMap<String, HashMap<String, JAROW>>> trainedWordClassifiers = new ArrayList<>();
+    
     /**
      *
-     * @param testingData
-     * @return
      */
-    public Object[] runLOLS(ArrayList<DatasetInstance> testingData) {
-        ArrayList<HashMap<String, JAROW>> trainedAttrClassifiers = new ArrayList<>();
-        ArrayList<HashMap<String, HashMap<String, JAROW>>> trainedWordClassifiers = new ArrayList<>();
+    public void runInitialTraining() {        
+        trainedAttrClassifiers = new ArrayList<>();
+        trainedWordClassifiers = new ArrayList<>();
         //INITIALIZE A POLICY P_0 (initializing on ref)
-
-        HashMap<String, ArrayList<Instance>> totalTrainingAttrInstances = new HashMap<>();
-        HashMap<String, HashMap<String, ArrayList<Instance>>> totalTrainingWordInstances = new HashMap<>();
-
-        datasetParser.getPredicateContentTrainingData().keySet().stream().map((predicate) -> {
-            trainedAttrClassifiers_0.put(predicate, new JAROW());
-            return predicate;
-        }).map((predicate) -> {
-            if (!totalTrainingAttrInstances.containsKey(predicate)) {
-                totalTrainingAttrInstances.put(predicate, new ArrayList<Instance>());
-            }
-            return predicate;
-        }).map((predicate) -> {
-            totalTrainingAttrInstances.get(predicate).addAll(datasetParser.getPredicateContentTrainingData().get(predicate));
-            return predicate;
-        }).filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
-            datasetParser.getAvailableContentActions().get(predicate).stream().filter((attribute) -> (!attribute.equals(Action.TOKEN_END))).forEachOrdered((attribute) -> {
-                if (datasetParser.getPredicateWordTrainingData().get(predicate).containsKey(attribute) && !datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute).isEmpty()) {
-                    if (!trainedWordClassifiers_0.containsKey(predicate)) {
-                        trainedWordClassifiers_0.put(predicate, new HashMap<String, JAROW>());
-                    }
-                    trainedWordClassifiers_0.get(predicate).put(attribute, new JAROW());
-                    
-                    if (!totalTrainingWordInstances.containsKey(predicate)) {
-                        totalTrainingWordInstances.put(predicate, new HashMap<String, ArrayList<Instance>>());
-                    }
-                    if (!totalTrainingWordInstances.get(predicate).containsKey(attribute)) {
-                        totalTrainingWordInstances.get(predicate).put(attribute, new ArrayList<Instance>());
-                    }
-                    totalTrainingWordInstances.get(predicate).get(attribute).addAll(datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute));
-                }
-            });
-        });
 
         if (datasetParser.isResetStoredCaches() || !datasetParser.loadInitClassifiers(datasetParser.getTrainingData().size(), trainedAttrClassifiers_0, trainedWordClassifiers_0)) {
             System.out.print("Initial training...");
@@ -145,8 +113,16 @@ public class JLOLS {
 
         trainedAttrClassifiers.add(trainedAttrClassifiers_0);
         trainedWordClassifiers.add(trainedWordClassifiers_0);
-        datasetParser.evaluateGeneration(trainedAttrClassifiers_0, trainedWordClassifiers_0, testingData, -1);
+    }
 
+    /**
+     *
+     * @param testingData
+     * @return
+     */
+    public Object[] runLOLS(ArrayList<DatasetInstance> testingData) {
+        datasetParser.evaluateGeneration(trainedAttrClassifiers_0, trainedWordClassifiers_0, testingData, -1);
+        
         checkIndex = -1;
         int epochs = 10;
         HashMap<String, ArrayList<DatasetInstance>> trainingDataPerPredicate = new HashMap<>();
@@ -257,14 +233,6 @@ public class JLOLS {
                 });
             });
             ExecutorService executorTrainAdditional = Executors.newFixedThreadPool(THREADS_COUNT);
-            datasetParser.getPredicateContentTrainingData().keySet().stream().map((predicate) -> {
-                totalTrainingAttrInstances.get(predicate).addAll(totalNewAttrTrainingInstances.get(predicate));
-                return predicate;
-            }).filter((predicate) -> (trainedWordClassifiers_i.containsKey(predicate))).forEachOrdered((predicate) -> {
-                trainedWordClassifiers_i.get(predicate).keySet().stream().filter((attr) -> (!totalNewWordTrainingInstances.get(predicate).get(attr).isEmpty())).forEachOrdered((attr) -> {
-                    totalTrainingWordInstances.get(predicate).get(attr).addAll(totalNewWordTrainingInstances.get(predicate).get(attr));
-                });
-            });
             totalNewAttrTrainingInstances.keySet().stream().map((predicate) -> {
                 executorTrainAdditional.execute(new TrainAdditionalThread(trainedAttrClassifier_ii.get(predicate), totalNewAttrTrainingInstances.get(predicate), datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getAdditionalTrainingParam(), datasetParser.isAdapt()));
                 //trainedAttrClassifier_ii.get(predicate).trainAdditional(new ArrayList<Instance>(totalNewAttrTrainingInstances.get(predicate)), true, false, 10, adapt, additionalParam);
