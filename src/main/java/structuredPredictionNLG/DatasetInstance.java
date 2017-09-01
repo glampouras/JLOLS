@@ -35,6 +35,8 @@ public class DatasetInstance implements Serializable, Comparable<DatasetInstance
     private ArrayList<Action> directAttrSequence;
     // Realized string of the word actions in the direct reference 
     private String directReference = "";
+    // File from which DI was parsed; may be used for training/development/testing seperation 
+    private String originFile = "";
     
     // References to be used during evaluation of this DatasetInstance
     private HashSet<String> evaluationReferences = new HashSet<String>();
@@ -85,7 +87,7 @@ public class DatasetInstance implements Serializable, Comparable<DatasetInstance
     }
 
     /**
-     * Returns (and constructs when first called) a sequence of content actions based on the direct referenec of this DatasetInstance.
+     * Returns (and constructs when first called) a sequence of content actions based on the direct reference of this DatasetInstance.
      * @return A sequence of content actions.
      */
     public ArrayList<Action> getDirectReferenceAttrValueSequence() {
@@ -137,6 +139,10 @@ public class DatasetInstance implements Serializable, Comparable<DatasetInstance
         return directReference;
     }
 
+    public void setDirectReference(String directReference) {
+        this.directReference = directReference;
+    }
+
     /**
      * Returns the references used for evaluation of this DatasetInstance.
      * @return The references used for evaluation of this DatasetInstance.
@@ -179,5 +185,13 @@ public class DatasetInstance implements Serializable, Comparable<DatasetInstance
         }
 
         return EQUAL;
+    }
+
+    public String getOriginFile() {
+        return originFile;
+    }
+
+    public void setOriginFile(String originFile) {
+        this.originFile = originFile;
     }
 }

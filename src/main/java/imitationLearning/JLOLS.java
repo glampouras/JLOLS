@@ -17,6 +17,7 @@
  */
 package imitationLearning;
 
+import com.google.common.collect.Lists;
 import gnu.trove.map.hash.TObjectDoubleHashMap;
 import jarow.Instance;
 import jarow.JAROW;
@@ -27,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -36,7 +38,6 @@ import structuredPredictionNLG.Action;
 import structuredPredictionNLG.ActionSequence;
 import structuredPredictionNLG.DatasetInstance;
 import structuredPredictionNLG.DatasetParser;
-
 
 public class JLOLS {
 
@@ -52,15 +53,26 @@ public class JLOLS {
     /**
      *
      */
+    public static int targettedExploration = -1;
+
+    /**
+     *
+     */
     public static double p = 0.2;
+
+    /**
+     *
+     */
+    public static int batchSize = -1;
+
     /**
      *
      */
     public static int checkIndex = -1;
     DatasetParser datasetParser = null;
 
-    HashMap<String, JAROW> trainedAttrClassifiers_0 = new HashMap<>();
-    HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0 = new HashMap<>();
+    public HashMap<String, JAROW> trainedAttrClassifiers_0 = new HashMap<>();
+    public HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0 = new HashMap<>();
 
     /**
      *
@@ -79,18 +91,9 @@ public class JLOLS {
     public JLOLS(DatasetParser dataset) {
         this.datasetParser = dataset;
     }
-    
-    ArrayList<HashMap<String, JAROW>> trainedAttrClassifiers = new ArrayList<>();
-    ArrayList<HashMap<String, HashMap<String, JAROW>>> trainedWordClassifiers = new ArrayList<>();
-    
-    /**
-     *
-     */
-    public void runInitialTraining() {        
-        trainedAttrClassifiers = new ArrayList<>();
-        trainedWordClassifiers = new ArrayList<>();
-        //INITIALIZE A POLICY P_0 (initializing on ref)
 
+    public void runInitialTraining() {
+        //INITIALIZE A POLICY P_0 (initializing on ref)
         if (datasetParser.isResetStoredCaches() || !datasetParser.loadInitClassifiers(datasetParser.getTrainingData().size(), trainedAttrClassifiers_0, trainedWordClassifiers_0)) {
             System.out.print("Initial training...");
             ExecutorService executorTrain = Executors.newFixedThreadPool(THREADS_COUNT);
@@ -101,18 +104,54 @@ public class JLOLS {
             }).filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
                 datasetParser.getAvailableContentActions().get(predicate).stream().filter((attribute) -> (!attribute.equals(Action.TOKEN_END)
                         && datasetParser.getPredicateWordTrainingData().get(predicate).containsKey(attribute) && !datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute).isEmpty())).forEachOrdered((attribute) -> {
-                            executorTrain.execute(new TrainThread(trainedWordClassifiers_0.get(predicate).get(attribute), datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute), datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getInitialTrainingParam(), datasetParser.isAdapt()));
-                            //trainedWordClassifiers_0.get(predicate).put(attribute, trainClassifier(datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute), param, adapt));
+                    executorTrain.execute(new TrainThread(trainedWordClassifiers_0.get(predicate).get(attribute), datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute), datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getInitialTrainingParam(), datasetParser.isAdapt()));
+                    //trainedWordClassifiers_0.get(predicate).put(attribute, trainClassifier(datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute), param, adapt));
                 });
             });
             executorTrain.shutdown();
             while (!executorTrain.isTerminated()) {
             }
+            System.out.println("done!");
             datasetParser.writeInitClassifiers(datasetParser.getTrainingData().size(), trainedAttrClassifiers_0, trainedWordClassifiers_0);
         }
+    }
 
-        trainedAttrClassifiers.add(trainedAttrClassifiers_0);
-        trainedWordClassifiers.add(trainedWordClassifiers_0);
+    public void runInitialTrainingOnBatch() {
+        //INITIALIZE A POLICY P_0 (initializing on ref)
+        System.out.print("Initial training...");
+        ExecutorService executorTrain = Executors.newFixedThreadPool(THREADS_COUNT);
+        datasetParser.getPredicateContentTrainingData().keySet().stream().map((predicate) -> {
+            ArrayList<Instance> trainInsts = datasetParser.getPredicateContentTrainingData().get(predicate);//Instance.removeHapaxLegomena(datasetParser.getPredicateContentTrainingData().get(predicate));
+            if (!trainedAttrClassifiers_0.containsKey(predicate)) {
+                trainedAttrClassifiers_0.put(predicate, new JAROW());
+                executorTrain.execute(new TrainThread(trainedAttrClassifiers_0.get(predicate), trainInsts, datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getInitialTrainingParam(), datasetParser.isAdapt()));
+            } else {
+                executorTrain.execute(new TrainAdditionalThread(trainedAttrClassifiers_0.get(predicate), trainInsts, datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getAdditionalTrainingParam(), datasetParser.isAdapt()));
+            }
+            return predicate;
+        }).filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
+            datasetParser.getAvailableContentActions().get(predicate).stream().filter((attribute) -> (!attribute.equals(Action.TOKEN_END)
+                    && datasetParser.getPredicateWordTrainingData().get(predicate).containsKey(attribute) && !datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute).isEmpty())).forEachOrdered((attribute) -> {
+                if (!trainedWordClassifiers_0.containsKey(predicate)) {
+                    trainedWordClassifiers_0.put(predicate, new HashMap<String, JAROW>());
+                }
+                ArrayList<Instance> trainInsts = datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute);//Instance.removeHapaxLegomena(datasetParser.getPredicateWordTrainingData().get(predicate).get(attribute));
+                if (!trainedWordClassifiers_0.get(predicate).containsKey(attribute)) {
+                    trainedWordClassifiers_0.get(predicate).put(attribute, new JAROW());
+                    executorTrain.execute(new TrainThread(trainedWordClassifiers_0.get(predicate).get(attribute), trainInsts, datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getInitialTrainingParam(), datasetParser.isAdapt()));
+                } else {
+                    executorTrain.execute(new TrainAdditionalThread(trainedWordClassifiers_0.get(predicate).get(attribute), trainInsts, datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getAdditionalTrainingParam(), datasetParser.isAdapt()));
+                }
+            });
+        });
+        executorTrain.shutdown();
+        while (!executorTrain.isTerminated()) {
+        }
+        System.out.println("done!");
+    }
+
+    public void writeInitClassifiers() {
+        datasetParser.writeInitClassifiers(datasetParser.getTrainingData().size(), trainedAttrClassifiers_0, trainedWordClassifiers_0);
     }
 
     /**
@@ -121,12 +160,17 @@ public class JLOLS {
      * @return
      */
     public Object[] runLOLS(ArrayList<DatasetInstance> testingData) {
+        ArrayList<HashMap<String, JAROW>> trainedAttrClassifiers = new ArrayList<>();
+        ArrayList<HashMap<String, HashMap<String, JAROW>>> trainedWordClassifiers = new ArrayList<>();
+
+        trainedAttrClassifiers.add(trainedAttrClassifiers_0);
+        trainedWordClassifiers.add(trainedWordClassifiers_0);
         datasetParser.evaluateGeneration(trainedAttrClassifiers_0, trainedWordClassifiers_0, testingData, -1);
-        
+
         checkIndex = -1;
         int epochs = 10;
         HashMap<String, ArrayList<DatasetInstance>> trainingDataPerPredicate = new HashMap<>();
-        datasetParser.getPredicateContentTrainingData().keySet().forEach((predicate) -> {
+        datasetParser.getPredicates().forEach((predicate) -> {
             trainingDataPerPredicate.put(predicate, new ArrayList<DatasetInstance>());
         });
         datasetParser.getTrainingData().forEach((di) -> {
@@ -150,96 +194,108 @@ public class JLOLS {
 
             ConcurrentHashMap<DatasetInstance, ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>> newAttrTrainingInstances = new ConcurrentHashMap<>();
             ConcurrentHashMap<DatasetInstance, ConcurrentHashMap<String, ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>>> newWordTrainingInstances = new ConcurrentHashMap<>();
-            
-            datasetParser.getTrainingData().stream().map((di) -> {
-                newAttrTrainingInstances.put(di, new ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>());
-                return di;
-            }).map((di) -> {
-                newWordTrainingInstances.put(di, new ConcurrentHashMap<String, ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>>());
-                return di;
-            }).forEachOrdered((di) -> {
-                datasetParser.getPredicateContentTrainingData().keySet().stream().map((predicate) -> {
-                    newAttrTrainingInstances.get(di).put(predicate, new CopyOnWriteArrayList<Instance>());
-                    return predicate;
-                }).map((predicate) -> {
-                    newWordTrainingInstances.get(di).put(predicate, new ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>());
-                    return predicate;
-                }).filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
-                    datasetParser.getAvailableContentActions().get(predicate).forEach((attr) -> {
-                        newWordTrainingInstances.get(di).get(predicate).put(attr, new CopyOnWriteArrayList<Instance>());
+
+            List<List<DatasetInstance>> trainingDataBatches;
+            if (batchSize > 0) {
+                trainingDataBatches = Lists.partition(datasetParser.getTrainingData(), batchSize);
+            } else {
+                trainingDataBatches = new ArrayList<>();
+                trainingDataBatches.add(datasetParser.getTrainingData());
+            }
+
+            int b = 0;
+            for (List<DatasetInstance> batch : trainingDataBatches) {
+                batch.stream().map((di) -> {
+                    newAttrTrainingInstances.put(di, new ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>());
+                    return di;
+                }).map((di) -> {
+                    newWordTrainingInstances.put(di, new ConcurrentHashMap<String, ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>>());
+                    return di;
+                }).forEachOrdered((di) -> {
+                    datasetParser.getPredicates().stream().map((predicate) -> {
+                        newAttrTrainingInstances.get(di).put(predicate, new CopyOnWriteArrayList<Instance>());
+                        return predicate;
+                    }).map((predicate) -> {
+                        newWordTrainingInstances.get(di).put(predicate, new ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>());
+                        return predicate;
+                    }).filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
+                        datasetParser.getAvailableContentActions().get(predicate).forEach((attr) -> {
+                            newWordTrainingInstances.get(di).get(predicate).put(attr, new CopyOnWriteArrayList<Instance>());
+                        });
                     });
                 });
-            });
 
-            System.out.print("Run LOLS..." + THREADS_COUNT + "...");
-            ExecutorService executor = Executors.newFixedThreadPool(THREADS_COUNT);
-            for (DatasetInstance di : datasetParser.getTrainingData()) {
-                executor.execute(new runSFXLOLSOnInstance(datasetParser, beta, di, trainedAttrClassifier_i, trainedWordClassifiers_i, newAttrTrainingInstances, newWordTrainingInstances));
-            }
-            executor.shutdown();
-            while (!executor.isTerminated()) {
-            }
-            System.out.println("done!");
-            System.out.println("avgContentErrors = " + runSFXLOLSOnInstance.avgContentErrors);
-            System.out.println("avgWordErrors = " + runSFXLOLSOnInstance.avgWordErrors);
+                System.out.print("Run LOLS..." + THREADS_COUNT + "...onb atch " + b + " out of " + trainingDataBatches.size());
+                ExecutorService executor = Executors.newFixedThreadPool(THREADS_COUNT);
+                for (DatasetInstance di : batch) {
+                    executor.execute(new runSFXLOLSOnInstance(datasetParser, beta, di, trainedAttrClassifier_i, trainedWordClassifiers_i, newAttrTrainingInstances, newWordTrainingInstances));
+                }
+                executor.shutdown();
+                while (!executor.isTerminated()) {
+                }
 
-            System.out.print("Create new classifiers...");
-            HashMap<String, ArrayList<Instance>> totalNewAttrTrainingInstances = new HashMap<String, ArrayList<Instance>>();
-            HashMap<String, HashMap<String, ArrayList<Instance>>> totalNewWordTrainingInstances = new HashMap<>();
-            datasetParser.getTrainingData().stream().map((di) -> {
-                newAttrTrainingInstances.get(di).keySet().stream().map((predicate) -> {
-                    if (!totalNewAttrTrainingInstances.containsKey(predicate)) {
-                        totalNewAttrTrainingInstances.put(predicate, new ArrayList<Instance>());
-                    }
+                System.out.println("done!");
+                System.out.println("avgContentErrors = " + runSFXLOLSOnInstance.avgContentErrors);
+                System.out.println("avgWordErrors = " + runSFXLOLSOnInstance.avgWordErrors);
+
+                System.out.print("Create new classifiers...");
+                HashMap<String, ArrayList<Instance>> totalNewAttrTrainingInstances = new HashMap<String, ArrayList<Instance>>();
+                HashMap<String, HashMap<String, ArrayList<Instance>>> totalNewWordTrainingInstances = new HashMap<>();
+                batch.stream().map((di) -> {
+                    newAttrTrainingInstances.get(di).keySet().stream().map((predicate) -> {
+                        if (!totalNewAttrTrainingInstances.containsKey(predicate)) {
+                            totalNewAttrTrainingInstances.put(predicate, new ArrayList<Instance>());
+                        }
+                        return predicate;
+                    }).map((predicate) -> {
+                        if (!totalNewWordTrainingInstances.containsKey(predicate)) {
+                            totalNewWordTrainingInstances.put(predicate, new HashMap<String, ArrayList<Instance>>());
+                        }
+                        return predicate;
+                    }).forEachOrdered((predicate) -> {
+                        totalNewAttrTrainingInstances.get(predicate).addAll(newAttrTrainingInstances.get(di).get(predicate));
+                    });
+                    return di;
+                }).forEachOrdered((di) -> {
+                    totalNewWordTrainingInstances.keySet().stream().filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
+                        datasetParser.getAvailableContentActions().get(predicate).stream().map((attr) -> {
+                            if (!totalNewWordTrainingInstances.get(predicate).containsKey(attr)) {
+                                totalNewWordTrainingInstances.get(predicate).put(attr, new ArrayList<Instance>());
+                            }
+                            return attr;
+                        }).forEachOrdered((attr) -> {
+                            totalNewWordTrainingInstances.get(predicate).get(attr).addAll(newWordTrainingInstances.get(di).get(predicate).get(attr));
+                        });
+                    });
+                });
+                System.out.println("done!");
+                //UPDATE CLASSIFIERS
+
+                //UPDATE CLASSIFIERS
+                System.out.print("Update classifiers...");
+                HashMap<String, JAROW> trainedAttrClassifier_ii = new HashMap<String, JAROW>();
+                HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_ii = new HashMap<String, HashMap<String, JAROW>>();
+
+                datasetParser.getPredicateContentTrainingData().keySet().stream().map((predicate) -> {
+                    trainedAttrClassifier_ii.put(predicate, new JAROW(trainedAttrClassifier_i.get(predicate)));
                     return predicate;
-                }).map((predicate) -> {
-                    if (!totalNewWordTrainingInstances.containsKey(predicate)) {
-                        totalNewWordTrainingInstances.put(predicate, new HashMap<String, ArrayList<Instance>>());
-                    }
+                }).filter((predicate) -> (trainedWordClassifiers_i.containsKey(predicate))).map((predicate) -> {
+                    trainedWordClassifiers_ii.put(predicate, new HashMap<String, JAROW>());
                     return predicate;
                 }).forEachOrdered((predicate) -> {
-                    totalNewAttrTrainingInstances.get(predicate).addAll(newAttrTrainingInstances.get(di).get(predicate));
-                });
-                return di;
-            }).forEachOrdered((di) -> {
-                totalNewWordTrainingInstances.keySet().stream().filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
-                    datasetParser.getAvailableContentActions().get(predicate).stream().map((attr) -> {
-                        if (!totalNewWordTrainingInstances.get(predicate).containsKey(attr)) {
-                            totalNewWordTrainingInstances.get(predicate).put(attr, new ArrayList<Instance>());
-                        }
-                        return attr;
-                    }).forEachOrdered((attr) -> {
-                        totalNewWordTrainingInstances.get(predicate).get(attr).addAll(newWordTrainingInstances.get(di).get(predicate).get(attr));
+                    trainedWordClassifiers_i.get(predicate).keySet().forEach((attr) -> {
+                        trainedWordClassifiers_ii.get(predicate).put(attr, new JAROW(trainedWordClassifiers_i.get(predicate).get(attr)));
                     });
                 });
-            });
-            System.out.println("done!");
-            //UPDATE CLASSIFIERS
+                ExecutorService executorTrainAdditional = Executors.newFixedThreadPool(THREADS_COUNT);
 
-            //UPDATE CLASSIFIERS
-            System.out.print("Update classifiers...");
-            HashMap<String, JAROW> trainedAttrClassifier_ii = new HashMap<String, JAROW>();
-            HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_ii = new HashMap<String, HashMap<String, JAROW>>();
-
-            datasetParser.getPredicateContentTrainingData().keySet().stream().map((predicate) -> {
-                trainedAttrClassifier_ii.put(predicate, new JAROW(trainedAttrClassifier_i.get(predicate)));
-                return predicate;
-            }).filter((predicate) -> (trainedWordClassifiers_i.containsKey(predicate))).map((predicate) -> {
-                trainedWordClassifiers_ii.put(predicate, new HashMap<String, JAROW>());
-                return predicate;
-            }).forEachOrdered((predicate) -> {
-                trainedWordClassifiers_i.get(predicate).keySet().forEach((attr) -> {
-                    trainedWordClassifiers_ii.get(predicate).put(attr, new JAROW(trainedWordClassifiers_i.get(predicate).get(attr)));
-                });
-            });
-            ExecutorService executorTrainAdditional = Executors.newFixedThreadPool(THREADS_COUNT);
-            totalNewAttrTrainingInstances.keySet().stream().map((predicate) -> {
-                executorTrainAdditional.execute(new TrainAdditionalThread(trainedAttrClassifier_ii.get(predicate), totalNewAttrTrainingInstances.get(predicate), datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getAdditionalTrainingParam(), datasetParser.isAdapt()));
-                //trainedAttrClassifier_ii.get(predicate).trainAdditional(new ArrayList<Instance>(totalNewAttrTrainingInstances.get(predicate)), true, false, 10, adapt, additionalParam);
-                return predicate;
-            }).filter((predicate) -> (totalNewWordTrainingInstances.containsKey(predicate))).forEachOrdered((predicate) -> {
-                totalNewWordTrainingInstances.get(predicate).keySet().stream().filter((attr) -> (!totalNewWordTrainingInstances.get(predicate).get(attr).isEmpty())).forEachOrdered((attr) -> {
-                    /*for (Instance in : totalNewWordTrainingInstances.get(predicate).get(attr)) {
+                totalNewAttrTrainingInstances.keySet().stream().map((predicate) -> {
+                    executorTrainAdditional.execute(new TrainAdditionalThread(trainedAttrClassifier_ii.get(predicate), totalNewAttrTrainingInstances.get(predicate), datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getAdditionalTrainingParam(), datasetParser.isAdapt()));
+                    //trainedAttrClassifier_ii.get(predicate).trainAdditional(new ArrayList<Instance>(totalNewAttrTrainingInstances.get(predicate)), true, false, 10, adapt, additionalParam);
+                    return predicate;
+                }).filter((predicate) -> (totalNewWordTrainingInstances.containsKey(predicate))).forEachOrdered((predicate) -> {
+                    totalNewWordTrainingInstances.get(predicate).keySet().stream().filter((attr) -> (!totalNewWordTrainingInstances.get(predicate).get(attr).isEmpty())).forEachOrdered((attr) -> {
+                        /*for (Instance in : totalNewWordTrainingInstances.get(predicate).get(attr)) {
                     for (String action : in.getCorrectLabels()) {
                     if (!trainedWordClassifiers_ii.get(predicate).get(attr).getCurrentVarianceVectors().containsKey(action)) {
                     System.out.println("WTRF");
@@ -252,73 +308,75 @@ public class JLOLS {
                     }
                     }
                     }*/
-                    executorTrainAdditional.execute(new TrainAdditionalThread(trainedWordClassifiers_ii.get(predicate).get(attr), totalNewWordTrainingInstances.get(predicate).get(attr), datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getAdditionalTrainingParam(), datasetParser.isAdapt()));
-                    //trainedWordClassifiers_ii.get(predicate).get(attr).trainAdditional(totalNewWordTrainingInstances.get(predicate).get(attr), true, false, 10, adapt, additionalParam);
-                });
-            });
-            executorTrainAdditional.shutdown();
-            while (!executorTrainAdditional.isTerminated()) {
-            }
-            System.out.println("done!");
-
-            trainedAttrClassifiers.add(trainedAttrClassifier_ii);
-            trainedWordClassifiers.add(trainedWordClassifiers_ii);
-            //FIRST NEED TO AVERAGE OVER ALL CLASSIFIERS
-
-            //FIRST NEED TO AVERAGE OVER ALL CLASSIFIERS
-            System.out.print("Averaging classifiers...");
-            HashMap<String, ArrayList<JAROW>> reorganizedClassifiersAttrs = new HashMap<>();
-            datasetParser.getPredicateContentTrainingData().keySet().forEach((predicate) -> {
-                reorganizedClassifiersAttrs.put(predicate, new ArrayList<JAROW>());
-            });
-            trainedAttrClassifiers.forEach((trainedClassifiers_i) -> {
-                trainedClassifiers_i.keySet().forEach((predicate) -> {
-                    reorganizedClassifiersAttrs.get(predicate).add(trainedClassifiers_i.get(predicate));
-                });
-            });
-
-            HashMap<String, HashMap<String, ArrayList<JAROW>>> reorganizedClassifiersWords = new HashMap<>();
-            datasetParser.getPredicateContentTrainingData().keySet().stream().map((predicate) -> {
-                reorganizedClassifiersWords.put(predicate, new HashMap<String, ArrayList<JAROW>>());
-                return predicate;
-            }).filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
-                datasetParser.getAvailableContentActions().get(predicate).stream().filter((attribute) -> (!attribute.equals(Action.TOKEN_END))).forEachOrdered((attribute) -> {
-                    reorganizedClassifiersWords.get(predicate).put(attribute, new ArrayList<JAROW>());
-                });
-            });
-            trainedWordClassifiers.forEach((trainedClassifiers_i) -> {
-                trainedClassifiers_i.keySet().forEach((predicate) -> {
-                    trainedClassifiers_i.get(predicate).keySet().forEach((attribute) -> {
-                        reorganizedClassifiersWords.get(predicate).get(attribute).add(trainedClassifiers_i.get(predicate).get(attribute));
+                        executorTrainAdditional.execute(new TrainAdditionalThread(trainedWordClassifiers_ii.get(predicate).get(attr), totalNewWordTrainingInstances.get(predicate).get(attr), datasetParser.getAveraging(), datasetParser.getShuffling(), datasetParser.getRounds(), datasetParser.getAdditionalTrainingParam(), datasetParser.isAdapt()));
+                        //trainedWordClassifiers_ii.get(predicate).get(attr).trainAdditional(totalNewWordTrainingInstances.get(predicate).get(attr), true, false, 10, adapt, additionalParam);
                     });
                 });
-            });
+                executorTrainAdditional.shutdown();
+                while (!executorTrainAdditional.isTerminated()) {
+                }
+                System.out.println("done!");
 
-            HashMap<String, JAROW> avgClassifiersAttrs = new HashMap<>();
-            datasetParser.getPredicateContentTrainingData().keySet().forEach((predicate) -> {
-                JAROW avg = new JAROW();
-                avg.averageOverClassifiers(reorganizedClassifiersAttrs.get(predicate));
+                trainedAttrClassifiers.add(trainedAttrClassifier_ii);
+                trainedWordClassifiers.add(trainedWordClassifiers_ii);
+                //FIRST NEED TO AVERAGE OVER ALL CLASSIFIERS
 
-                avgClassifiersAttrs.put(predicate, avg);
-            });
-
-            HashMap<String, HashMap<String, JAROW>> avgClassifiersWords = new HashMap<>();
-            datasetParser.getPredicateWordTrainingData().keySet().stream().filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
-                datasetParser.getAvailableContentActions().get(predicate).stream().filter((attribute) -> (!attribute.equals(Action.TOKEN_END))).forEachOrdered((attribute) -> {
-                    if (!avgClassifiersWords.containsKey(predicate)) {
-                        avgClassifiersWords.put(predicate, new HashMap<String, JAROW>());
-                    }
-                    if (!reorganizedClassifiersWords.get(predicate).get(attribute).isEmpty()) {
-                        JAROW avg = new JAROW();
-                        avg.averageOverClassifiers(reorganizedClassifiersWords.get(predicate).get(attribute));
-                        
-                        avgClassifiersWords.get(predicate).put(attribute, avg);
-                    }
+                //FIRST NEED TO AVERAGE OVER ALL CLASSIFIERS
+                System.out.print("Averaging classifiers...");
+                HashMap<String, ArrayList<JAROW>> reorganizedClassifiersAttrs = new HashMap<>();
+                datasetParser.getPredicateContentTrainingData().keySet().forEach((predicate) -> {
+                    reorganizedClassifiersAttrs.put(predicate, new ArrayList<JAROW>());
                 });
-            });
-            System.out.println("done!");
+                trainedAttrClassifiers.forEach((trainedClassifiers_i) -> {
+                    trainedClassifiers_i.keySet().forEach((predicate) -> {
+                        reorganizedClassifiersAttrs.get(predicate).add(trainedClassifiers_i.get(predicate));
+                    });
+                });
 
-            datasetParser.evaluateGeneration(avgClassifiersAttrs, avgClassifiersWords, testingData, e + 1);
+                HashMap<String, HashMap<String, ArrayList<JAROW>>> reorganizedClassifiersWords = new HashMap<>();
+                datasetParser.getPredicateContentTrainingData().keySet().stream().map((predicate) -> {
+                    reorganizedClassifiersWords.put(predicate, new HashMap<String, ArrayList<JAROW>>());
+                    return predicate;
+                }).filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
+                    datasetParser.getAvailableContentActions().get(predicate).stream().filter((attribute) -> (!attribute.equals(Action.TOKEN_END))).forEachOrdered((attribute) -> {
+                        reorganizedClassifiersWords.get(predicate).put(attribute, new ArrayList<JAROW>());
+                    });
+                });
+                trainedWordClassifiers.forEach((trainedClassifiers_i) -> {
+                    trainedClassifiers_i.keySet().forEach((predicate) -> {
+                        trainedClassifiers_i.get(predicate).keySet().forEach((attribute) -> {
+                            reorganizedClassifiersWords.get(predicate).get(attribute).add(trainedClassifiers_i.get(predicate).get(attribute));
+                        });
+                    });
+                });
+
+                HashMap<String, JAROW> avgClassifiersAttrs = new HashMap<>();
+                datasetParser.getPredicateContentTrainingData().keySet().forEach((predicate) -> {
+                    JAROW avg = new JAROW();
+                    avg.averageOverClassifiers(reorganizedClassifiersAttrs.get(predicate));
+
+                    avgClassifiersAttrs.put(predicate, avg);
+                });
+
+                HashMap<String, HashMap<String, JAROW>> avgClassifiersWords = new HashMap<>();
+                datasetParser.getPredicateWordTrainingData().keySet().stream().filter((predicate) -> (datasetParser.getAvailableContentActions().containsKey(predicate))).forEachOrdered((predicate) -> {
+                    datasetParser.getAvailableContentActions().get(predicate).stream().filter((attribute) -> (!attribute.equals(Action.TOKEN_END))).forEachOrdered((attribute) -> {
+                        if (!avgClassifiersWords.containsKey(predicate)) {
+                            avgClassifiersWords.put(predicate, new HashMap<String, JAROW>());
+                        }
+                        if (!reorganizedClassifiersWords.get(predicate).get(attribute).isEmpty()) {
+                            JAROW avg = new JAROW();
+                            avg.averageOverClassifiers(reorganizedClassifiersWords.get(predicate).get(attribute));
+
+                            avgClassifiersWords.get(predicate).put(attribute, avg);
+                        }
+                    });
+                });
+                System.out.println("done!");
+
+                datasetParser.writeClassifiers(datasetParser.getTrainingData().size(), e + 1, avgClassifiersAttrs, avgClassifiersWords);
+                datasetParser.evaluateGeneration(avgClassifiersAttrs, avgClassifiersWords, testingData, e + 1);
+            }
         }
 
         /*HashMap<String, ArrayList<JAROW>> reorganizedClassifiersAttrs = new HashMap<>();
@@ -411,7 +469,7 @@ class runSFXLOLSOnInstance extends Thread {
     ConcurrentHashMap<DatasetInstance, ConcurrentHashMap<String, ConcurrentHashMap<String, CopyOnWriteArrayList<Instance>>>> newWordTrainingInstances;
 
     boolean printDebugInfo = false;
-    static boolean useAllRefsInLoss = false;
+    static boolean useAllRefsInLoss = true;
 
     public static int avgContentErrors;
     public static int avgWordErrors;
@@ -590,10 +648,10 @@ class runSFXLOLSOnInstance extends Thread {
 
                     if (fixedAttr.equals(Action.TOKEN_END)) {
                         Action fixedAction = new Action(Action.TOKEN_END, fixedAttr);
-                        fixedAction.setAttrValueTracking(rollInContentSequence.getSequence().get(index).getAttrValuesBeforeThisTimestep_InContentSequence(), rollInContentSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InContentSequence());
+                        fixedAction.setAttrValueTracking(rollInContentSequence.getSequence().get(index).getAttrValuesBeforeThisTimestep_InContentSequence(), rollInContentSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InContentSequence(), null);
                     } else {
                         Action fixedAction = new Action(Action.TOKEN_START, fixedAttr + "=" + fixedValue);
-                        fixedAction.setAttrValueTracking(rollInContentSequence.getSequence().get(index).getAttrValuesBeforeThisTimestep_InContentSequence(), rollInContentSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InContentSequence());
+                        fixedAction.setAttrValueTracking(rollInContentSequence.getSequence().get(index).getAttrValuesBeforeThisTimestep_InContentSequence(), rollInContentSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InContentSequence(), null);
                     }
                 }
             }
@@ -648,7 +706,38 @@ class runSFXLOLSOnInstance extends Thread {
                         costs.put(Action.TOKEN_END.toLowerCase().trim(), 0.0);
                     } else {*/
                 String value = datasetParser.chooseNextValue(attr, rollInWordSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InContentSequence());
-                for (Action availableAction : datasetParser.getAvailableWordActions().get(predicate).get(attr)) {
+                HashSet<Action> alternativeActions;
+                if (JLOLS.targettedExploration <= 0 || useReferenceRollout) {
+                    alternativeActions = datasetParser.getAvailableWordActions().get(predicate).get(attr);
+                } else {
+                    alternativeActions = new HashSet<>();
+                    if (rollInWordSequence.getSequence().get(index).getPrediction() != null) {
+                        TObjectDoubleHashMap<String> scoreMap = new TObjectDoubleHashMap<String>(rollInWordSequence.getSequence().get(index).getPrediction().getLabel2Score());
+                        while (alternativeActions.size() < JLOLS.targettedExploration && !scoreMap.isEmpty()) {
+                            String maxAction = null;
+                            Double maxScore = Double.MIN_VALUE;
+                            for (String act : scoreMap.keySet()) {
+                                if (scoreMap.get(act) > maxScore) {
+                                    maxAction = act;
+                                    maxScore = scoreMap.get(act);
+                                }
+                            }
+                            if (maxAction == null) {
+                                break;
+                            } else {
+                                scoreMap.remove(maxAction);
+                                for (Action availableAction : datasetParser.getAvailableWordActions().get(predicate).get(attr)) {
+                                    if (availableAction.getWord().equals(maxAction)) {
+                                        alternativeActions.add(availableAction);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (Action availableAction : alternativeActions) {
                     availableAction.setAttribute(attrValue);
 
                     boolean eligibleWord = true;
@@ -741,7 +830,7 @@ class runSFXLOLSOnInstance extends Thread {
                         costs.put(s, costs.get(s) - bestActionCost);
                     }
                 }
-                Instance in = datasetParser.createWordInstanceWithCosts(predicate, attrValue, costs, rollInWordSequence.getSequence().get(index).getAttrValuesBeforeThisTimestep_InWordSequence(), new ArrayList<Action>(rollInWordSequence.getSequence().subList(0, index)), rollInWordSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InWordSequence(), rollInWordSequence.getSequence().get(index).getAttrValuesBeforeThisTimestep_InContentSequence(), rollInWordSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InContentSequence(), rollInWordSequence.getSequence().get(index).isValueMentionedAtThisTimestep(), datasetParser.getAvailableWordActions().get(predicate));
+                Instance in = datasetParser.createWordInstanceWithCosts(predicate, attrValue, costs, rollInWordSequence.getSequence().get(index).getAttrValuesBeforeThisTimestep_InWordSequence(), new ArrayList<Action>(rollInWordSequence.getSequence().subList(0, index)), rollInWordSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InWordSequence(), rollInWordSequence.getSequence().get(index).getAttrValuesBeforeThisTimestep_InContentSequence(), rollInWordSequence.getSequence().get(index).getAttrValuesAfterThisTimestep_InContentSequence(), rollInWordSequence.getSequence().get(index).isValueMentionedAtThisTimestep(), datasetParser.getAvailableWordActions().get(predicate), di.getMeaningRepresentation());
 
                 if (in.getCorrectLabels().size() > 1) {
                     /*
@@ -951,7 +1040,20 @@ class runSFXLOLSOnInstance extends Thread {
             return 1.0;
         } else {
             double minCost = 1.0;
+            HashSet<ActionSequence> relevantRefs = new HashSet<>();
+            Action examinedAction = rollInSeq.getSequence().get(rollInSeq.getSequence().size() - 1);
             for (ActionSequence refSeq : refs.keySet()) {
+                for (Action act : refSeq.getSequence()) {
+                    if (act.getWord().equals(examinedAction.getWord())) {
+                        relevantRefs.add(refSeq);
+                        break;
+                    }
+                }
+            }
+            if (relevantRefs.isEmpty()) {
+                return 1.0;
+            }
+            for (ActionSequence refSeq : relevantRefs) {
                 //If the end of the ATTR
                 boolean resolved = false;
                 if (rollInSeq.getSequence().get(rollInSeq.getSequence().size() - 1).getWord().equals(Action.TOKEN_END)) {
@@ -1006,7 +1108,7 @@ class runSFXLOLSOnInstance extends Thread {
                             });
                             rollInSeqCopy.addAll(di.getDirectReferenceSequence().subList(i, di.getDirectReferenceSequence().size()));
 
-                            String rollOut = datasetParser.postProcessWordSequence(di, rollInSeqCopy);
+                            String rollOut = datasetParser.postProcessWordSequence(di.getMeaningRepresentation(), rollInSeqCopy);
                             //System.out.println("ROLLOUT " + rollOut);
                             //System.out.println("REFS " + refWindows);
                             double refCost = LossFunction.getROUGE(rollOut, refWindows);
@@ -1062,7 +1164,7 @@ class runSFXLOLSOnInstance extends Thread {
             ActionSequence rollOutContentSequence = generateContentSequence(predicate, di, rollInSeq, classifierAttrs);
             ActionSequence rollOutWordSeq = generateWordSequence(predicate, di, rollOutContentSequence, new ActionSequence(), classifierWords, valueAlignments, availableWordActions);
 
-            String rollOut = datasetParser.postProcessWordSequence(di, rollOutWordSeq.getSequence());
+            String rollOut = datasetParser.postProcessWordSequence(di.getMeaningRepresentation(), rollOutWordSeq.getSequence());
             ArrayList<String> refWindows = new ArrayList<>();
             refWindows.add(di.getDirectReference());
 
@@ -1107,7 +1209,7 @@ class runSFXLOLSOnInstance extends Thread {
             return 1.0;
         } else {
             ActionSequence rollOutWordSeq = generateWordSequence(predicate, di, contentSequence, rollInWordSeq, classifierWords, valueAlignments, availableWordActions);
-            String rollOut = datasetParser.postProcessWordSequence(di, rollOutWordSeq.getSequence());
+            String rollOut = datasetParser.postProcessWordSequence(di.getMeaningRepresentation(), rollOutWordSeq.getSequence());
             //If the end of an ATTR
             //If last action is the end of the attr and rollout says we should continue with the same attr
             //In other words, we should not have ended expressing that attr!
@@ -1179,7 +1281,7 @@ class runSFXLOLSOnInstance extends Thread {
                 } else if (value.startsWith("\"")) {
                     value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
                 }
-                attrValuesToBeMentioned.add(attribute + "=" + value);
+                attrValuesToBeMentioned.add(DatasetParser.cleanAndGetAttr(attribute) + "=" + value);
             }
         });
         if (attrValuesToBeMentioned.isEmpty()) {
@@ -1199,7 +1301,7 @@ class runSFXLOLSOnInstance extends Thread {
 
         while (!predictedAttr.equals(Action.TOKEN_END) && predictedAttrValues.size() < datasetParser.getMaxContentSequenceLength()) {
             if (contentSequence.size() < partialContentSequence.getSequence().size()) {
-                predictedAttr = partialContentSequence.getSequence().get(contentSequence.size()).getAttribute();
+                predictedAttr = DatasetParser.cleanAndGetAttr(partialContentSequence.getSequence().get(contentSequence.size()).getAttribute());
                 predictedAttrValues.add(predictedAttr);
 
                 if (!predictedAttr.equals(Action.TOKEN_END)) {
@@ -1207,7 +1309,7 @@ class runSFXLOLSOnInstance extends Thread {
                 } else {
                     contentSequence.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
                 }
-                contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned);
+                contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, null);
 
                 if (!predictedAttr.isEmpty()) {
                     attrValuesAlreadyMentioned.add(predictedAttr);
@@ -1253,10 +1355,10 @@ class runSFXLOLSOnInstance extends Thread {
                         } else {
                             contentSequence.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
                         }
-                        contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned);
+                        contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictAttr);
                     } else {
                         contentSequence.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
-                        contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned);
+                        contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictAttr);
                     }
                     if (!predictedAttr.isEmpty()) {
                         attrValuesAlreadyMentioned.add(predictedAttr);
@@ -1265,19 +1367,19 @@ class runSFXLOLSOnInstance extends Thread {
                 } else {
                     predictedAttr = Action.TOKEN_END;
                     contentSequence.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
-                    contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned);
+                    contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, null);
                 }
             } else {
                 predictedAttr = Action.TOKEN_END;
                 contentSequence.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
-                contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned);
+                contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, null);
             }
         }
         if (!contentSequence.get(contentSequence.size() - 1).getAttribute().equals(Action.TOKEN_END)) {
             //System.out.println("ATTR ROLL-IN IS UNENDING");
             //System.out.println(contentSequence);
             contentSequence.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
-            contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned);
+            contentSequence.get(contentSequence.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, null);
         }
         cachedSequence = new ActionSequence(contentSequence);
         JLOLS.wordSequenceCache.put(key, cachedSequence);
@@ -1302,11 +1404,11 @@ class runSFXLOLSOnInstance extends Thread {
                 } else if (value.startsWith("\"")) {
                     value = value.substring(1, value.length() - 1).replaceAll(" ", "_");
                 }
-                attrValuesToBeMentioned.add(attribute + "=" + value);
+                attrValuesToBeMentioned.add(DatasetParser.cleanAndGetAttr(attribute) + "=" + value);
             }
             return attribute;
         }).forEachOrdered((attribute) -> {
-            valuesToBeMentioned.put(attribute, new ArrayList<>(di.getMeaningRepresentation().getAttributeValues().get(attribute)));
+            valuesToBeMentioned.put(DatasetParser.cleanAndGetAttr(attribute), new ArrayList<>(di.getMeaningRepresentation().getAttributeValues().get(attribute)));
         });
         if (attrValuesToBeMentioned.isEmpty()) {
             attrValuesToBeMentioned.add("empty=empty");
@@ -1360,7 +1462,7 @@ class runSFXLOLSOnInstance extends Thread {
                                 if (!predictedAttributes.get(predictedAttributes.size() - 1).equals(attrValue)) {
                                     predictedAttributesForInstance.add(predictedAttributes.get(predictedAttributes.size() - 1));
                                 }
-                                Instance wordTrainingVector = datasetParser.createWordInstance(predicate, new Action("@TOK@", attrValue), predictedAttributesForInstance, predictedActionsList, nextAttributesForInstance, attrValuesAlreadyMentioned, attrValuesToBeMentioned, isValueMentioned, availableWordActions);
+                                Instance wordTrainingVector = datasetParser.createWordInstance(predicate, new Action("@TOK@", attrValue), predictedAttributesForInstance, predictedActionsList, nextAttributesForInstance, attrValuesAlreadyMentioned, attrValuesToBeMentioned, isValueMentioned, availableWordActions, di.getMeaningRepresentation());
 
                                 if (wordTrainingVector != null) {
                                     if (classifierWords.get(attribute) != null) {
@@ -1382,7 +1484,7 @@ class runSFXLOLSOnInstance extends Thread {
                                             predictedWord = Action.TOKEN_END;
                                         }
                                         predictedActionsList.add(new Action(predictedWord, attrValue));
-                                        predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, isValueMentioned);
+                                        predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, isValueMentioned, predictWord);
                                         if (!predictedWord.equals(Action.TOKEN_START)
                                                 && !predictedWord.equals(Action.TOKEN_END)) {
                                             subPhrase.add(predictedWord);
@@ -1391,7 +1493,7 @@ class runSFXLOLSOnInstance extends Thread {
                                     } else {
                                         predictedWord = Action.TOKEN_END;
                                         predictedActionsList.add(new Action(predictedWord, attrValue));
-                                        predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, isValueMentioned);
+                                        predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, isValueMentioned, null);
                                     }
                                 }
                             }
@@ -1470,15 +1572,15 @@ class runSFXLOLSOnInstance extends Thread {
                                 && !predictedActionsList.get(predictedActionsList.size() - 1).getWord().equals(Action.TOKEN_END)) {
                             predictedWord = Action.TOKEN_END;
                             predictedActionsList.add(new Action(predictedWord, attrValue));
-                            predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, isValueMentioned);
+                            predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, isValueMentioned, null);
                         }
                     } else {
                         predictedActionsList.add(new Action(Action.TOKEN_END, attrValue));
-                        predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, true);
+                        predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, true, null);
                     }
                 } else {
                     predictedActionsList.add(new Action(Action.TOKEN_END, Action.TOKEN_END));
-                    predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, true);
+                    predictedActionsList.get(predictedActionsList.size() - 1).setAttrValueTracking(attrValuesAlreadyMentioned, attrValuesToBeMentioned, predictedAttributes, nextAttributesForInstance, true, null);
                 }
             }
         }

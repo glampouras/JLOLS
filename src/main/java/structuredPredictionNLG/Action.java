@@ -16,6 +16,7 @@
  */
 package structuredPredictionNLG;
 
+import jarow.Prediction;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -71,6 +72,8 @@ public class Action implements Serializable {
     // This variable logs whether the attribute/value pair we are currently generating words for has been expressed in the current word subsequence or not.
     boolean isValueMentionedAtThisTimestep;
     
+    Prediction prediction;
+    
     /**
      * Main constructor.
      * Each action consists of a word and corresponding attribute to which the word aligns to. 
@@ -103,6 +106,7 @@ public class Action implements Serializable {
             this.attrValuesAfterThisTimestep_InWordSequence = new ArrayList<>(a.getAttrValuesAfterThisTimestep_InWordSequence());
         }
         this.isValueMentionedAtThisTimestep = a.isValueMentionedAtThisTimestep;
+        this.prediction = a.prediction;
     }
     
     /**
@@ -190,9 +194,11 @@ public class Action implements Serializable {
      * @param attrValuesBeforeThisTimestep_InContentSequence Before this time-step content-level logger to be set.
      * @param attrValuesAfterThisTimestep_InContentSequence After this time-step content-level logger to be set.
      */
-    public void setAttrValueTracking(HashSet<String> attrValuesBeforeThisTimestep_InContentSequence, HashSet<String> attrValuesAfterThisTimestep_InContentSequence) {
+    public void setAttrValueTracking(HashSet<String> attrValuesBeforeThisTimestep_InContentSequence, HashSet<String> attrValuesAfterThisTimestep_InContentSequence, Prediction predict) {
         this.attrValuesBeforeThisTimestep_InContentSequence = new HashSet<>(attrValuesBeforeThisTimestep_InContentSequence);
         this.attrValuesAfterThisTimestep_InContentSequence = new HashSet<>(attrValuesAfterThisTimestep_InContentSequence);
+        
+        this.prediction = predict;
     }
     
     /**
@@ -203,7 +209,7 @@ public class Action implements Serializable {
      * @param attrValuesAfterThisTimestep_InWordSequence After this time-step word-level logger to be set.
      * @param isValueMentionedAtThisTimestep Logger concerning value of attribute/value pair currently generated.
      */
-    public void setAttrValueTracking(HashSet<String> attrValuesBeforeThisTimestep_InContentSequence, HashSet<String> attrValuesAfterThisTimestep_InContentSequence, ArrayList<String> attrValuesBeforeThisTimestep_InWordSequence, ArrayList<String> attrValuesAfterThisTimestep_InWordSequence, boolean isValueMentionedAtThisTimestep) {
+    public void setAttrValueTracking(HashSet<String> attrValuesBeforeThisTimestep_InContentSequence, HashSet<String> attrValuesAfterThisTimestep_InContentSequence, ArrayList<String> attrValuesBeforeThisTimestep_InWordSequence, ArrayList<String> attrValuesAfterThisTimestep_InWordSequence, boolean isValueMentionedAtThisTimestep, Prediction predict) {
         this.attrValuesBeforeThisTimestep_InContentSequence = new HashSet<>(attrValuesBeforeThisTimestep_InContentSequence);
         this.attrValuesAfterThisTimestep_InContentSequence = new HashSet<>(attrValuesAfterThisTimestep_InContentSequence);
         
@@ -211,6 +217,7 @@ public class Action implements Serializable {
         this.attrValuesAfterThisTimestep_InWordSequence = new ArrayList<>(attrValuesAfterThisTimestep_InWordSequence);
             
         this.isValueMentionedAtThisTimestep = isValueMentionedAtThisTimestep;
+        this.prediction = predict;
     }
     
     /**
@@ -231,7 +238,12 @@ public class Action implements Serializable {
             this.attrValuesAfterThisTimestep_InWordSequence = new ArrayList<>(a.getAttrValuesAfterThisTimestep_InWordSequence());
         }
         this.isValueMentionedAtThisTimestep = a.isValueMentionedAtThisTimestep;
+        this.prediction = a.prediction;
     }
+
+    public Prediction getPrediction() {
+        return prediction;
+    }    
 
     /**
      * Returns the following string representation of the Action: A{word, attribute}. 

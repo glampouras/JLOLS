@@ -58,6 +58,8 @@ public abstract class DatasetParser {
 
     // The identifier of the dataset
     private String dataset;
+    // Which fold to calculate in cross-fold validation (used in Bagel dataset)
+    private int fold;
     // Training, validation, and testing subsets of the dataset    
     private ArrayList<DatasetInstance> trainingData;
     private ArrayList<DatasetInstance> validationData;
@@ -76,6 +78,8 @@ public abstract class DatasetParser {
     // Maximum lengths for content and word sequences, as observed in the training data
     private int maxContentSequenceLength;
     private int maxWordSequenceLength;
+    // The attributes and values observed in training; used mostly for the web demo to define the range of MRs that can be handled by the system
+    private HashMap<String, HashMap<String, HashSet<String>>> observedDelexicalizedAttrValues;
     // AROW parameters
     private boolean averaging;
     private boolean shuffling;
@@ -83,6 +87,7 @@ public abstract class DatasetParser {
     private Double initialTrainingParam;
     private Double additionalTrainingParam;
     private boolean adapt;
+    private boolean useCache;
     /*
      * The sequence in which the attribute/value pairs of the meaning representation have been mentioned in the reference.
      * Primarily used to determine the order in which values will be picked during generation.
@@ -107,6 +112,11 @@ public abstract class DatasetParser {
     // Language models estimated on the word and content actions; one for each predicate
     private HashMap<String, SimpleLM> contentLMsPerPredicate = new HashMap<>();
     private HashMap<String, SimpleLM> wordLMsPerPredicate = new HashMap<>();
+    
+    // Language models estimated on the word and content actions; one for each predicate
+    // These are used when @unk@ tokens are included in the realizations (to combat sparsity) in order to realize these tokens in post-processing
+    private HashMap<String, SimpleLM> contentFullLMsPerPredicate = new HashMap<>();
+    private HashMap<String, SimpleLM> wordFullLMsPerPredicate = new HashMap<>();
 
     // Map between 
     private HashMap<String, String> compositeWordsInData = new HashMap<>();
@@ -120,6 +130,7 @@ public abstract class DatasetParser {
 
         Option helpOption = new Option("h", "help", false, "shows this message");
         Option datasetPathOption = new Option("d", "dataset", true, "dataset identifier");
+        Option foldOption = new Option("f", "fold", true, "which fold to calculate when performing cross-fold validation in the Bagel dataset {0 ... 9}");
         Option pOption = new Option("p", "p", true, "decaying factor for each epoch of LOLS: {0.0 ... 1.0}");
         Option sentenceCorrectionStepsOption = new Option("s", "scsteps", true, "number of steps to take after sentence correction");
         Option lossFunctionOption = new Option("l", "loss", true, "loss function to use: {B, R, BR, BC, RC, BRC}");
@@ -133,10 +144,12 @@ public abstract class DatasetParser {
         Option initialTrainingParamOption = new Option("init", "initialTrainingParam", true, "AROW parameter: training parameter for the initial policies");
         Option additionalTrainingParamOption = new Option("add", "additionalTrainingParam", true, "AROW parameter: training parameter for the additional policies");
         Option adaptOption = new Option("ad", "adapt", false, "AROW parameter: whether to use AROW algorithm or passive aggressive-II with prediction-based updates");
+        Option cacheOption = new Option("cache", "cache", false, "Whether to create cached lists (true) or not (false)");
 
         Options options = new Options();
         options.addOption(helpOption);
         options.addOption(datasetPathOption);
+        options.addOption(foldOption);
         options.addOption(pOption);
         options.addOption(sentenceCorrectionStepsOption);
         options.addOption(lossFunctionOption);
@@ -150,6 +163,7 @@ public abstract class DatasetParser {
         options.addOption(initialTrainingParamOption);
         options.addOption(additionalTrainingParamOption);
         options.addOption(adaptOption);
+        options.addOption(cacheOption);
 
         CommandLineParser parser = new BasicParser();
         try {
@@ -163,6 +177,20 @@ public abstract class DatasetParser {
                     setDataset(cmd.getOptionValue("dataset"));
                 } else {
                     setDataset("hotel");
+                }
+                if (!getDataset().equalsIgnoreCase("Bagel") && !getDataset().equalsIgnoreCase("restaurant") && !getDataset().equalsIgnoreCase("hotel") && !getDataset().equalsIgnoreCase("web") && !getDataset().equalsIgnoreCase("e2e")) {                    
+                    System.out.println("Dataset not supported!");
+                    System.out.println("Use \"Bagel\" for the Bagel dataset, or \"restaurant\" or \"hotel\" for the corresponding SFX datasets, or \"web\" for the WebNLG dataset");
+                    System.exit(1);
+                }
+                if (cmd.hasOption("fold")) {
+                    setFold(Integer.parseInt(cmd.getOptionValue("fold")));
+                    if (getFold() < 0 || getFold() > 9) {
+                        setFold(0);
+                    }
+                } else if (getDataset().equals("Bagel")) {
+                    System.out.println("When using the Bagel dataset, you also need to provide a particular fold for cross-fold validation via the -f flag {0 ... 9}!");
+                    System.exit(1);
                 }
                 if (cmd.hasOption("p")) {
                     JLOLS.p = Double.parseDouble(cmd.getOptionValue("p"));
@@ -189,8 +217,8 @@ public abstract class DatasetParser {
                     setResetStoredCaches(false);
                 }
                 setPerformEvaluationOn("test");
-                if (cmd.hasOption("test")) {
-                    String opt = cmd.getOptionValue("test");
+                if (cmd.hasOption("evaluate")) {
+                    String opt = cmd.getOptionValue("evaluate");
                     if (!opt.isEmpty()
                             && (opt.equals("test")
                             || opt.equals("valid")
@@ -242,6 +270,11 @@ public abstract class DatasetParser {
                 } else {
                     setAdapt(false);
                 }
+                if (cmd.hasOption("cache")) {
+                    setCache(true);
+                } else {
+                    setCache(false);
+                }
             }
         } catch (ParseException ex) {
             System.out.println(ex.getMessage());
@@ -252,6 +285,23 @@ public abstract class DatasetParser {
         testingData = new ArrayList<>();
         
         observedAttrValueSequences = new ArrayList<>();
+        observedDelexicalizedAttrValues = new HashMap<>();
+    }
+    
+    
+    /**
+     * Main constructor
+     * @param args Console arguments
+     */
+    public DatasetParser() {
+        resetRandomGen();
+
+        trainingData = new ArrayList<>();
+        validationData = new ArrayList<>();
+        testingData = new ArrayList<>();
+        
+        observedAttrValueSequences = new ArrayList<>();
+        observedDelexicalizedAttrValues = new HashMap<>();
     }
 
     /**
@@ -268,8 +318,7 @@ public abstract class DatasetParser {
     /**
      * Creates and call the imitation learning engine
      */
-    public void performImitationLearning() {
-        JLOLS ILEngine = new JLOLS(this);
+    public void performImitationLearning(JLOLS ILEngine) {
         if (getPerformEvaluationOn().equals("train")) {
             ILEngine.runLOLS(getTrainingData());
         } else if (getPerformEvaluationOn().equals("valid")) {
@@ -332,9 +381,10 @@ public abstract class DatasetParser {
      * @param attrValuesThatFollow
      * @param wasValueMentioned
      * @param availableWordActions
+     * @param MR
      * @return
      */
-    abstract public Instance createWordInstance(String predicate, Action bestAction, ArrayList<String> previousGeneratedAttributes, ArrayList<Action> previousGeneratedWords, ArrayList<String> nextGeneratedAttributes, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesThatFollow, boolean wasValueMentioned, HashMap<String, HashSet<Action>> availableWordActions);
+    abstract public Instance createWordInstance(String predicate, Action bestAction, ArrayList<String> previousGeneratedAttributes, ArrayList<Action> previousGeneratedWords, ArrayList<String> nextGeneratedAttributes, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesThatFollow, boolean wasValueMentioned, HashMap<String, HashSet<Action>> availableWordActions, MeaningRepresentation MR);
 
     /**
      *
@@ -348,9 +398,10 @@ public abstract class DatasetParser {
      * @param attrValuesThatFollow
      * @param wasValueMentioned
      * @param availableWordActions
+     * @param MR
      * @return
      */
-    abstract public Instance createWordInstanceWithCosts(String predicate, String currentAttrValue, TObjectDoubleHashMap<String> costs, ArrayList<String> generatedAttributes, ArrayList<Action> previousGeneratedWords, ArrayList<String> nextGeneratedAttributes, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesThatFollow, boolean wasValueMentioned, HashMap<String, HashSet<Action>> availableWordActions);
+    abstract public Instance createWordInstanceWithCosts(String predicate, String currentAttrValue, TObjectDoubleHashMap<String> costs, ArrayList<String> generatedAttributes, ArrayList<Action> previousGeneratedWords, ArrayList<String> nextGeneratedAttributes, HashSet<String> attrValuesAlreadyMentioned, HashSet<String> attrValuesThatFollow, boolean wasValueMentioned, HashMap<String, HashSet<Action>> availableWordActions, MeaningRepresentation MR);
 
     /**
      *
@@ -381,7 +432,7 @@ public abstract class DatasetParser {
         attrValuesToBeMentioned.stream().forEach((attrValue) -> {
             String attr = attrValue.substring(0, attrValue.indexOf('='));
             String value = attrValue.substring(attrValue.indexOf('=') + 1);
-            if (attr.equals(attribute)) {
+            if (cleanAndGetAttr(attr).startsWith(attribute)) {
                 relevantValues.put(value, 0);
             }
         });
@@ -435,13 +486,56 @@ public abstract class DatasetParser {
         return "";
     }
 
+    public static String anonymizeXToken(String s) {
+        if (s.startsWith(Action.TOKEN_X)) {
+            String index = s.substring(s.indexOf("_") + 1);
+            return Action.TOKEN_X + "obj_" + index;
+        }
+        return s;
+    }
+
+    public static String cleanAndGetAttr(String s) {
+        if (s.contains("¬")) {
+            s = s.substring(0, s.indexOf("¬"));
+        }
+        if (s.contains("=")) {
+            s = s.substring(0, s.indexOf("="));
+        }
+        return s;
+    }
+    
+    public static String cleanFromSubj(String s) {
+        if (s.contains("¬")) {
+            if (s.contains("=")) {
+                String r = s.substring(0, s.indexOf("¬"));
+                r += s.substring(s.indexOf("="));
+                s = r;
+            } else {
+                s = s.substring(0, s.indexOf("¬"));
+            }
+        }
+        return s;
+    }
+
+    public static String cleanAndGetSubj(String s) {
+        if (s.contains("¬")) {
+            if (s.contains("=")) {
+                return s.substring(s.indexOf("¬") + 1, s.indexOf("="));
+            } else {
+                return s.substring(s.indexOf("¬") + 1);
+            }
+        }
+        return null;
+    }
+
+
     /**
      *
-     * @param di
+     * @param mr
      * @param wordSequence
      * @return
      */
-    abstract public String postProcessWordSequence(DatasetInstance di, ArrayList<Action> wordSequence);
+    abstract public String postProcessWordSequence(MeaningRepresentation MR, ArrayList<Action> wordSequence);
 
     /**
      *
@@ -467,11 +561,49 @@ public abstract class DatasetParser {
      * @param trainedWordClassifiers_0
      */
     abstract public void writeInitClassifiers(int dataSize, HashMap<String, JAROW> trainedAttrClassifiers_0, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers_0);
+ 
+    /**
+     *
+     * @param dataSize
+     * @param epoch
+     * @param trainedAttrClassifiers
+     * @param trainedWordClassifiers
+     * @return
+     */
+    abstract public boolean loadClassifiers(int dataSize, int epoch, HashMap<String, JAROW> trainedAttrClassifiers, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers);
 
+    /**
+     *
+     * @param dataSize
+     * @param epoch
+     * @param trainedAttrClassifiers
+     * @param trainedWordClassifiers
+     */
+    abstract public void writeClassifiers(int dataSize, int epoch, HashMap<String, JAROW> trainedAttrClassifiers, HashMap<String, HashMap<String, JAROW>> trainedWordClassifiers);
+    
+    /**
+     *
+     */
+    abstract public boolean loadObservedAttrValues();
+    
+    /**
+     *
+     */
+    abstract public void writeObservedAttrValues();   
+    /**
+     *
+     */
+    abstract public boolean loadAvailableActions();
+    
+    /**
+     *
+     */
+    abstract public void writeAvailableActions();     
+    
     public ArrayList<DatasetInstance> getTrainingData() {
-        if (trainingData.size() > 100) {
+        /*if (trainingData.size() > 100) {
             trainingData = new ArrayList<DatasetInstance>(trainingData.subList(0, 100));
-        }
+        }*/
         return trainingData;
     }
 
@@ -503,6 +635,10 @@ public abstract class DatasetParser {
         return wordLMsPerPredicate;
     }
 
+    public HashMap<String, SimpleLM> getWordFullLMsPerPredicate() {
+        return wordFullLMsPerPredicate;
+    }
+
     public String getDataset() {
         return dataset;
     }
@@ -521,6 +657,14 @@ public abstract class DatasetParser {
 
     public void setMaxWordSequenceLength(int maxWordSequenceLength) {
         this.maxWordSequenceLength = maxWordSequenceLength;
+    }
+
+    public int getFold() {
+        return fold;
+    }
+
+    public void setFold(int fold) {
+        this.fold = fold;
     }
 
     public boolean getAveraging() {
@@ -571,6 +715,14 @@ public abstract class DatasetParser {
         this.adapt = adapt;
     }
 
+    public boolean isCache() {
+        return useCache;
+    }
+
+    public void setCache(boolean useCache) {
+        this.useCache = useCache;
+    }
+        
     public final void setResetStoredCaches(boolean resetStoredCaches) {
         this.resetStoredCaches = resetStoredCaches;
     }
@@ -631,6 +783,10 @@ public abstract class DatasetParser {
         return contentLMsPerPredicate;
     }
 
+    public HashMap<String, SimpleLM> getContentFullLMsPerPredicate() {
+        return contentFullLMsPerPredicate;
+    }
+
     public HashMap<String, String> getCompositeSuffixesInData() {
         return compositeWordsInData;
     }
@@ -651,8 +807,16 @@ public abstract class DatasetParser {
         this.contentLMsPerPredicate = contentLMsPerPredicate;
     }
 
+    public void setContentFullLMsPerPredicate(HashMap<String, SimpleLM> contentFullLMsPerPredicate) {
+        this.contentFullLMsPerPredicate = contentFullLMsPerPredicate;
+    }
+
     public void setWordLMsPerPredicate(HashMap<String, SimpleLM> wordLMsPerPredicate) {
         this.wordLMsPerPredicate = wordLMsPerPredicate;
+    }
+
+    public void setWordFullLMsPerPredicate(HashMap<String, SimpleLM> wordFullLMsPerPredicate) {
+        this.wordFullLMsPerPredicate = wordFullLMsPerPredicate;
     }
 
     public void setValueAlignments(HashMap<String, HashMap<ArrayList<String>, Double>> valueAlignments) {
@@ -709,5 +873,13 @@ public abstract class DatasetParser {
 
     public void setAvailableWordActions(HashMap<String, HashMap<String, HashSet<Action>>> availableWordActions) {
         this.availableWordActions = availableWordActions;
+    }
+
+    public HashMap<String, HashMap<String, HashSet<String>>> getObservedDelexicalizedAttrValues() {
+        return observedDelexicalizedAttrValues;
+    }
+
+    public void setObservedDelexicalizedAttrValues(HashMap<String, HashMap<String, HashSet<String>>> observedDelexicalizedAttrValues) {
+        this.observedDelexicalizedAttrValues = observedDelexicalizedAttrValues;
     }
 }

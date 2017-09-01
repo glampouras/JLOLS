@@ -38,8 +38,6 @@ public class Instance implements Serializable {
      * @return
      */
     public static ArrayList<Instance> removeHapaxLegomena(ArrayList<Instance> instances) {
-        System.out.println("Counting features");
-
         TObjectIntHashMap<String> generalFeature2counts = new TObjectIntHashMap<>();
         TObjectIntHashMap<String> valueSpecificFeature2counts = new TObjectIntHashMap<>();
 
@@ -59,7 +57,7 @@ public class Instance implements Serializable {
         instances.forEach((instance) -> {
             TObjectDoubleHashMap<String> newFeatureVector = new TObjectDoubleHashMap<>();
             // if this feature was encountered more than once
-            instance.getGeneralFeatureVector().keySet().stream().filter((element) -> (generalFeature2counts.get(element) > 1)).forEachOrdered((element) -> {
+            instance.getGeneralFeatureVector().keySet().stream().filter((element) -> (generalFeature2counts.get(element) > 0)).forEachOrdered((element) -> {
                 newFeatureVector.put(element, instance.getGeneralFeatureVector().get(element));
             });
             HashMap<String, TObjectDoubleHashMap<String>> newValueSpecificFeatureVector = null;
@@ -68,7 +66,7 @@ public class Instance implements Serializable {
                 for (String value : instance.getValueSpecificFeatureVector().keySet()) {
                     for (String element : instance.getValueSpecificFeatureVector().keySet()) {
                         // if this feature was encountered more than once
-                        if (generalFeature2counts.get(value + "=" + element) > 1) {
+                        if (generalFeature2counts.get(value + "=" + element) > 0) {
                             if (!newValueSpecificFeatureVector.containsKey(value)) {
                                 newValueSpecificFeatureVector.put(value, new TObjectDoubleHashMap<String>());
                             }
